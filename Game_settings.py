@@ -1,0 +1,22 @@
+#screen settings
+SCREEN_WIDTH = 2000
+SCREEN_HEIGHT = 1200
+FPS = 60
+SCREEN_TITLE = "Zombie"
+#grid settings
+TILE_SIZE = 50
+GRID_WIDTH = SCREEN_WIDTH//TILE_SIZE
+GRID_HEIGHT = SCREEN_HEIGHT//TILE_SIZE
+
+
+#player settings
+PLAYER_SPEED = 1
+
+#zombie settings
+ZOMBIE_SPEED =1
+
+#Color constants
+WHITE = (255, 255, 255)
+BLACK = (0, 0, 0)
+DARKGREY = (40, 40, 40)
+LIGHTGREY = (100, 100, 100)
