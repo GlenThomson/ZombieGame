@@ -2,6 +2,7 @@ import pygame
 import random
 import pickle
 import os
+from utility_functions import *
 from Toolbar import Toolbar
 import tkinter as tk
 from tkinter import filedialog
@@ -12,7 +13,6 @@ from Game_settings import *
 from Sprites import *
 import math
 pygame.init()
-
 
 class game_main():
     def __init__(self):
@@ -74,7 +74,7 @@ class game_main():
 
     def draw(self):#draws everything to the screen
         self.display.fill(WHITE)
-        self.draw_grid()
+        self.draw_grid(SCREEN_WIDTH,SCREEN_HEIGHT)
         self.walls.draw(self.display)
         #self.all_sprites.draw(self.display)
         self.bullets.draw(self.display)
@@ -83,11 +83,11 @@ class game_main():
         self.zombies.draw(self.display)
         pygame.display.flip()
 
-    def draw_grid(self):#draws the grid to the screen
-        for x_pos in range(0,SCREEN_WIDTH,TILE_SIZE):
-            pygame.draw.line(self.display,BLACK,(x_pos,0),(x_pos,SCREEN_HEIGHT),2)
-        for y_pos in range(0,SCREEN_WIDTH,TILE_SIZE):
-            pygame.draw.line(self.display,BLACK,(0,y_pos),(SCREEN_WIDTH,y_pos),2)
+    def draw_grid(self,map_width,map_height):#draws the grid to the screen
+        for x_pos in range(0,map_width,TILE_SIZE):
+            pygame.draw.line(self.display,BLACK,(x_pos,0),(x_pos,map_height),2)
+        for y_pos in range(0,map_height,TILE_SIZE):
+            pygame.draw.line(self.display,BLACK,(0,y_pos),(map_width,y_pos),2)
 
     def events(self):#checks for any events e.g(quit or player move)
         for event in pygame.event.get():
@@ -104,17 +104,6 @@ class game_main():
                 new_bullet = Bullet(self.player.rect.centerx, self.player.rect.centery,direction, self.player.angle)
                 self.bullets.add(new_bullet)
 
-    def open_map(self):
-        # Open a file dialog to select a map file to open
-        root = tk.Tk()
-        root.withdraw()  # Hide the root window
-        file_path = filedialog.askopenfilename(initialdir=os.path.join(os.getcwd(), "maps"), title="Select a Map", filetypes=[("Pickle Files", "*.pkl")])
-
-        if file_path:
-            # Load the map data from the selected file
-            with open(file_path, 'rb') as f:
-                self.grid = pickle.load(f)
-                self.create()
     def quit(self): #quits the game and window
         pygame.quit()
         sys.exit()
@@ -163,30 +152,29 @@ class MenuMode:
                 map_maker_rect = pygame.Rect(SCREEN_WIDTH//2 - 110, SCREEN_HEIGHT//2 + 55, 220, 50)
                 # Check if user clicks on one of the choices using the rectangles created in draw_menu
                 if self.play_rect.collidepoint((x, y)):
-                    game.open_map()
+                    self.game.grid = load_map_from_file()
+                    self.game.create()
                     game.mode = "PLAY"
                 elif self.map_maker_rect.collidepoint((x, y)):
                     game.mode = "MAPMAKING_START"
 
+
+
+
 class MapMakerMode:
     def __init__(self, game):
         self.game = game
-        self.grid = [[0 for _ in range(SCREEN_WIDTH // TILE_SIZE)] for _ in range(SCREEN_HEIGHT // TILE_SIZE)]
         self.state = "START"
 
     def mapmaker_start(self):
         self.draw_mapmaker_start()
-        pass
 
     def draw_mapmaker_start(self):
         self.game.display.fill(WHITE)
 
         font = pygame.font.Font(None, 50)
         new_map_text = font.render('Create New Map', True, BLACK)
-        open_map_text = font.render('Open Existing Map', True, BLACK)
-
         self.game.display.blit(new_map_text, (SCREEN_WIDTH//2 - new_map_text.get_width()//2, SCREEN_HEIGHT//3 - new_map_text.get_height()//2))
-        self.game.display.blit(open_map_text, (SCREEN_WIDTH//2 - open_map_text.get_width()//2, 2*SCREEN_HEIGHT//3 - open_map_text.get_height()//2))
         self.game.toolbar.draw()
         pygame.display.flip()
 
@@ -203,21 +191,24 @@ class MapMakerMode:
 
                 if new_map_rect.collidepoint((x, y)):
                     self.game.mode = "MAPMAKING"
-                    # Here proceed with new map creation
-                elif open_map_rect.collidepoint((x, y)):
-                    self.game.mode = "OPEN_MAP"
-                    # Here proceed with opening an existing map
+                    root = tk.Tk()
+                    root.withdraw() # Hide the root window
+                    self.map_width = int(simpledialog.askstring("Input", "Please enter the map width:"))
+                    root = tk.Tk()
+                    root.withdraw() # Hide the root window
+                    self.map_height = int(simpledialog.askstring("Input", "Please enter the map height:"))
+                    self.grid = [[0 for _ in range(self.map_width // TILE_SIZE)] for _ in range(self.map_height // TILE_SIZE)]
 
     def draw(self):
         self.game.display.fill(WHITE)
-        self.game.draw_grid()
+        self.game.draw_grid(self.map_width,self.map_height)
         self.draw_walls()
         self.game.toolbar.draw()
         pygame.display.flip()
 
     #loops through the walls if the wall is a 1 then it draws a wall
     def draw_walls(self):
-        for y, row in enumerate(self.grid):
+        for y, row in enumerate(game.grid):
             for x, tile in enumerate(row):
                 if tile == 1:
                     pygame.draw.rect(self.game.display, BLACK, (x * TILE_SIZE, y * TILE_SIZE, TILE_SIZE, TILE_SIZE))
@@ -237,11 +228,11 @@ class MapMakerMode:
         if mouse_pressed[0]:  # If left mouse button is pressed
             x, y = pygame.mouse.get_pos()
             grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
-            self.grid[grid_y][grid_x] = 1  # Set to wall
+            self.game.grid[grid_y][grid_x] = 1  # Set to wall
         elif mouse_pressed[2]:  # If right mouse button is pressed
             x, y = pygame.mouse.get_pos()
             grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
-            self.grid[grid_y][grid_x] = 0  # Set to empty
+            self.game.grid[grid_y][grid_x] = 0  # Set to empty
 
 
     def save_map(self):
@@ -252,18 +243,6 @@ class MapMakerMode:
 
         with open(f"maps/{map_name}.pkl", 'wb') as f:
             pickle.dump(self.grid, f)
-
-    def open_map(self):
-        # Open a file dialog to select a map file to open
-        root = tk.Tk()
-        root.withdraw()  # Hide the root window
-        file_path = filedialog.askopenfilename(initialdir=os.path.join(os.getcwd(), "maps"), title="Select a Map", filetypes=[("Pickle Files", "*.pkl")])
-
-        if file_path:
-            # Load the map data from the selected file
-            with open(file_path, 'rb') as f:
-                self.grid = pickle.load(f)
-
 
 game = game_main()
 game.run_game()

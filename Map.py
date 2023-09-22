@@ -3,6 +3,9 @@ from tkinter import filedialog
 from tkinter import simpledialog
 import pickle
 import os
+from Game_settings import *
+import pygame
+
 
 class Map:
     def __init__(self,game):
@@ -22,3 +25,6 @@ class Map:
         self.map_name = ""
 
 
+class Camera:
+    def __init__(self):
+        self.camera = pygame.Rect(0,0,SCREEN_WIDTH,SCREEN_HEIGHT)

@@ -1,7 +1,7 @@
 from Game_settings import *
 import pygame
 from Map import *
-
+from utility_functions import *
 class Toolbar:
     def __init__(self, game):
         self.game = game
@@ -57,6 +57,10 @@ class Toolbar:
             elif self.menu_button.collidepoint((x, y)):
                 self.game.mode = "MENU"
             elif self.open_button.collidepoint((x, y)):
-                self.game.map = Map(self.game)
+                self.game.grid = load_map_from_file()
+                self.game.map_maker_mode.map_width = len(self.game.grid)*TILE_SIZE
+                self.game.map_maker_mode.map_height = len(self.game.grid[0])*TILE_SIZE
+                #self.game.map = Map(self.game)
+
 
 
