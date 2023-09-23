@@ -26,5 +26,24 @@ class Map:
 
 
 class Camera:
-    def __init__(self):
+    def __init__(self,width ,height,game):
         self.camera = pygame.Rect(0,0,SCREEN_WIDTH,SCREEN_HEIGHT)
+        self.width = width
+        self.height = height
+        self.game = game
+
+    def apply(self,entity):
+        return entity.rect.move(self.camera.topleft)
+
+    def update(self, target):
+        x = self.camera.x
+        y = self.camera.y
+        #first checks to see if player is close to edge of map and stops camera moving if it is
+        if  target.rect.x - int(SCREEN_WIDTH/2) >=0 and target.rect.x - self.game.map_width +int(SCREEN_WIDTH/2) <=0:
+            x = -target.rect.centerx + int(SCREEN_WIDTH/2)
+
+        #first checks to see if player is close to edge of map and stops camera moving if it is
+        if  target.rect.y - int(SCREEN_HEIGHT/2) >=0 and target.rect.y - self.game.map_height +int(SCREEN_HEIGHT/2) <=0:
+            y = -target.rect.centery + int(SCREEN_HEIGHT/2)
+        self.camera = pygame.Rect(x,y,self.width,self.height)
+

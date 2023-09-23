@@ -2,6 +2,8 @@ import pickle
 import os
 import tkinter as tk
 from tkinter import filedialog
+import pygame
+import sys
 
 def load_map_from_file(initial_directory=None):
     """
@@ -21,3 +23,7 @@ def load_map_from_file(initial_directory=None):
 
     with open(file_path, 'rb') as f:
         return pickle.load(f)
+
+def quit_application(): #quits the game and window
+    pygame.quit()
+    sys.exit()

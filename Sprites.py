@@ -2,46 +2,51 @@ import pygame
 import random
 import math
 from Game_settings import *
+vector = pygame.math.Vector2
+
+def collide_hit_box(sprite1,sprite2):
+    return sprite1.hit_box.colliderect(sprite2.rect)
+
+def collide_wall(sprite,direction):
+    if direction == 'x':
+
+        hits = pygame.sprite.spritecollide(sprite, sprite.game.walls, False,collide_hit_box)
+        if hits:
+            print("hhhhhhh")
+            if sprite.vel.x > 0:
+                sprite.pos.x = hits[0].rect.left - sprite.hit_box.width/2.0
+            if sprite.vel.x < 0:
+                sprite.pos.x = hits[0].rect.right + sprite.hit_box.width/2.0
+            sprite.vel.x = 0
+            sprite.hit_box.centerx = sprite.pos.x
+    if direction == 'y':
+        hits = pygame.sprite.spritecollide(sprite, sprite.game.walls, False,collide_hit_box)
+        if hits:
+            print("pppp")
+            if sprite.vel.y > 0:
+                sprite.pos.y = hits[0].rect.top - sprite.hit_box.height/2.0
+            if sprite.vel.y < 0:
+                sprite.pos.y = hits[0].rect.bottom + sprite.hit_box.height/2.0
+            sprite.vel.y = 0
+            sprite.hit_box.centery = sprite.pos.y
 
 class Zombie(pygame.sprite.Sprite):
     def __init__(self, x, y,game):
-        super().__init__()
-        self.game= game
+        self.groups = game.all_sprites
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        self.game = game
         #load in the image
         self.image = pygame.image.load("images/zombie.png")
         self.image = pygame.transform.scale(self.image,(TILE_SIZE,TILE_SIZE))
         self.original_image = self.image.copy()
         #set the cooridiantes
-        self.rect = self.image.get_rect()
-        self.rect.topleft = (x, y)
+        self.rect = self.image.get_rect(topleft=(x, y))
         self.speed = ZOMBIE_SPEED
         #need to keep seperate float position as rect only takes ints
-        self.x = float(x)
-        self.y = float(y)
-        self.count = 0
-        self.vel_x = 0
-        self.vel_y = 0
-
-    #Might need speeding up code may be inefficient
-    def collide_wall(self,direction):
-        if direction == 'x':
-            hits = pygame.sprite.spritecollide(self, self.game.walls, False)
-            if hits:
-                if self.vel_x > 0:
-                    self.x = hits[0].rect.left - self.rect.width
-                if self.vel_x < 0:
-                    self.x = hits[0].rect.right
-                self.vel_x = 0
-                self.rect.x = self.x
-        if direction == 'y':
-            hits = pygame.sprite.spritecollide(self, self.game.walls, False)
-            if hits:
-                if self.vel_y > 0:
-                    self.y = hits[0].rect.top - self.rect.height
-                if self.vel_y < 0:
-                    self.y = hits[0].rect.bottom
-                self.vel_y = 0
-                self.rect.y = self.y
+        self.vel = vector(0,0)
+        self.pos = vector(x,y)
+        self.hit_box = ZOMBIE_HIT_BOX
+        self.hit_box.center = self.rect.center
 
     #update
     def update(self, player_pos):
@@ -52,107 +57,92 @@ class Zombie(pygame.sprite.Sprite):
     #change the zombies direction to face were it is going
     def aim(self, player_pos,):
         # Calculate the direction of movement and find the angle
-        dx = player_pos[0] - self.x
-        dy = player_pos[1] - self.y
+        dx = player_pos[0] - self.pos.x
+        dy = player_pos[1] - self.pos.y
         #calculate the angle based of the player position
         self.angle = math.degrees(math.atan2(dy, dx))
         self.image = pygame.transform.rotate(self.original_image, -self.angle)  # Rotate the image
-        self.vel_x = self.speed * math.cos(math.radians(self.angle))
-        self.vel_y = self.speed * math.sin(math.radians(self.angle))
+        self.vel.x = self.speed * math.cos(math.radians(self.angle))
+        self.vel.y = self.speed * math.sin(math.radians(self.angle))
         # move the zombie in the direction it is facing
-        self.x += self.vel_x
-        self.y += self.vel_y
-        self.rect.x = self.x
-        self.collide_wall('x')
-        self.rect.y = self.y
-        self.collide_wall('y')
+        self.pos += (self.vel.x,self.vel.y)
+        self.hit_box.centerx = self.pos.x
+        collide_wall(self,'x')
+        self.hit_box.centery = self.pos.y
+        collide_wall(self,'y')
+        self.rect.center = self.hit_box.center
+
 
 
 class Player(pygame.sprite.Sprite):
     def __init__(self,game,x,y):
+        self.groups = game.all_sprites
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        self.angle = 0
         self.groups = game.bullets
         self.game = game
         self.image = pygame.image.load("images/player.png")
         self.image = pygame.transform.scale(self.image,(TILE_SIZE,TILE_SIZE))
-        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE))
-        self.image.fill((255, 55, 55))
         self.original_image = self.image.copy()
         self.rect = self.image.get_rect(topleft=(x, y))
+        self.hit_box = PLAYER_HIT_BOX
+        self.hit_box.center = self.rect.center
+        print(self.hit_box.center)
         #Coordiantes and velocity of player
-        self.x = x
-        self.y = y
-        self.rect.x = x
-        self.rect.y = y
-        self.vel_x = 0
-        self.vel_y = 0
+        self.vel = vector(0,0)
+        self.pos = vector(x,y)
+
 
     def update(self):
         #update the position of player
+        self.aim()
+
         self.movement()
-        #self.aim()
+
 
     def movement(self):
         #gets the keys pressed
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT]:
-            self.vel_x = -PLAYER_SPEED
-        elif keys[pygame.K_RIGHT]:
-            self.vel_x = PLAYER_SPEED
+        if keys[pygame.K_a]:
+            self.vel.x = -PLAYER_SPEED
+        elif keys[pygame.K_d]:
+            self.vel.x = PLAYER_SPEED
         else:
-            self.vel_x = 0
+            self.vel.x = 0
 
-        if keys[pygame.K_UP]:
-            self.vel_y = -PLAYER_SPEED
-        elif keys[pygame.K_DOWN]:
-            self.vel_y = PLAYER_SPEED
+        if keys[pygame.K_w]:
+            self.vel.y = -PLAYER_SPEED
+        elif keys[pygame.K_s]:
+            self.vel.y = PLAYER_SPEED
         else:
-            self.vel_y = 0
+            self.vel.y = 0
 
         #keeps diagonal movement same speed as vertical and sideways
-        if self.vel_y!=0 and self.vel_x!=0 :
-            length = math.sqrt(self.vel_x**2 + self.vel_y**2)
-            self.vel_x = (self.vel_x / length) * PLAYER_SPEED
-            self.vel_y = (self.vel_y / length) * PLAYER_SPEED
+        if self.vel.y!=0 and self.vel.x!=0 :
+            length = math.sqrt(self.vel.x**2 + self.vel.y**2)
+            self.vel.x = (self.vel.x / length) * PLAYER_SPEED
+            self.vel.y = (self.vel.y / length) * PLAYER_SPEED
 
         #update postions
-        self.x += self.vel_x
-        self.y += self.vel_y
-        self.rect.x = self.x
-        self.collide_wall('x')
-        self.rect.y = self.y
-        self.collide_wall('y')
-
+        self.pos += self.vel
+        print("hel")
+        print(self.hit_box.center)
+        self.hit_box.centerx = self.pos.x
+        collide_wall(self,'x')
+        self.hit_box.centery = self.pos.y
+        collide_wall(self,'y')
+        self.rect.center = self.hit_box.center
 
     def aim(self):
         self.angle = 0
         # Get the mouse position and calculate the angle to the mouse
         self.mx, self.my = pygame.mouse.get_pos()
-        self.rel_x, self.rel_y = self.mx - self.x - self.rect.width // 2, self.my - self.y - self.rect.height // 2
+        self.rel_x, self.rel_y = self.mx - self.pos.x - self.rect.width // 2, self.my - self.pos.y - self.rect.height // 2
         self. angle = (180 / math.pi) * -math.atan2(self.rel_y, self.rel_x)
         # Rotate the image and set the new rect
         self.image = pygame.transform.rotate(self.original_image, self.angle)
-        self.rect = self.image.get_rect(center=(self.x, self.y))
-
-    #Might need speeding up code may be inefficient
-    def collide_wall(self,direction):
-        if direction == 'x':
-            hits = pygame.sprite.spritecollide(self, self.game.walls, False)
-            if hits:
-                if self.vel_x > 0:
-                    self.x = hits[0].rect.left - self.rect.width
-                if self.vel_x < 0:
-                    self.x = hits[0].rect.right
-                self.vel_x = 0
-                self.rect.x = self.x
-        if direction == 'y':
-            hits = pygame.sprite.spritecollide(self, self.game.walls, False)
-            if hits:
-                if self.vel_y > 0:
-                    self.y = hits[0].rect.top - self.rect.height
-                if self.vel_y < 0:
-                    self.y = hits[0].rect.bottom
-                self.vel_y = 0
-                self.rect.y = self.y
+        self.rect = self.image.get_rect()
+        self.rect.center = self.pos
 
 
 class Wall(pygame.sprite.Sprite):
@@ -167,3 +157,27 @@ class Wall(pygame.sprite.Sprite):
         self.y = y
         self.rect.x = x * TILE_SIZE
         self.rect.y = y * TILE_SIZE
+
+
+class Bullet(pygame.sprite.Sprite):
+    def __init__(self,game, x, y,direction, angle):
+        self.groups = game.all_sprites
+        pygame.sprite.Sprite.__init__(self, self.groups)
+        self.image = pygame.Surface((10, 10))
+        self.image.fill((255, 0, 0))
+        self.rect = self.image.get_rect()
+        self.rect.center = (x, y)
+        self.speed = 1
+        self.angle = math.radians(angle)
+        #calculate the speed in x and y direction
+        self.vel = vector(direction.x * self.speed,direction.y * self.speed)
+        #need to keep seperate float position as rect only takes ints
+        self.pos = vector(x,y)
+
+
+    def update(self):
+        #add the speed to the x and y postion
+        self.pos += self.vel
+        #update the rect position
+        self.rect.x = int(self.pos.x)
+        self.rect.y = int(self.pos.y)

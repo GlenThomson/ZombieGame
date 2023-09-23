@@ -11,7 +11,6 @@ class Toolbar:
         self.open_button = pygame.Rect(200, 0, 100, 50)
         self.button_font = pygame.font.Font(None, 36)
 
-
     def draw(self):
         pygame.draw.rect(self.game.display, (100, 100, 100), (0, 0, SCREEN_WIDTH, self.navbar_height))
         # Draw the main menu button always
@@ -22,17 +21,9 @@ class Toolbar:
         # Draw the save button conditionally based on the game mode
         if self.game.mode == "MAPMAKING":
             self.draw_mapmaking_toolbar()
-
-
-        if self.game.mode == "MENU":
-            self.draw_menu_toolbar()
         elif self.game.mode == "PLAY":
             self.draw_play_toolbar()
         #... (repeat for other modes)
-
-    def draw_menu_toolbar(self):
-        # code to draw the toolbar when in "MENU" mode
-        pass
 
     def draw_mapmaking_toolbar(self):
         #draw the save button
@@ -58,8 +49,6 @@ class Toolbar:
                 self.game.mode = "MENU"
             elif self.open_button.collidepoint((x, y)):
                 self.game.grid = load_map_from_file()
-                self.game.map_maker_mode.map_width = len(self.game.grid)*TILE_SIZE
-                self.game.map_maker_mode.map_height = len(self.game.grid[0])*TILE_SIZE
                 #self.game.map = Map(self.game)
 
 

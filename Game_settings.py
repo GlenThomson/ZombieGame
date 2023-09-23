@@ -1,3 +1,5 @@
+
+import pygame
 #screen settings
 SCREEN_WIDTH = 2000
 SCREEN_HEIGHT = 1200
@@ -10,10 +12,13 @@ GRID_HEIGHT = SCREEN_HEIGHT//TILE_SIZE
 
 
 #player settings
-PLAYER_SPEED = 1
+PLAYER_SPEED = 2
+PLAYER_HIT_BOX= pygame.Rect(0,0,TILE_SIZE*0.8,TILE_SIZE*0.8)
 
 #zombie settings
-ZOMBIE_SPEED =1
+ZOMBIE_SPEED =0.5
+ZOMBIE_HIT_BOX =pygame.Rect(0,0,TILE_SIZE,TILE_SIZE)
+
 
 #Color constants
 WHITE = (255, 255, 255)
