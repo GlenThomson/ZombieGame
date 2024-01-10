@@ -24,6 +24,15 @@ def load_map_from_file(initial_directory=None):
     with open(file_path, 'rb') as f:
         return pickle.load(f)
 
+# Create a function to get the adjusted mouse position
+def get_adjusted_mouse_position(offset_x=0, offset_y=0):
+    mouse_x, mouse_y = pygame.mouse.get_pos()
+    adjusted_x = mouse_x - offset_x
+    adjusted_y = mouse_y - offset_y
+    return adjusted_x, adjusted_y
+
+
+
 def quit_application(): #quits the game and window
     pygame.quit()
     sys.exit()
