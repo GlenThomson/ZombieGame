@@ -489,10 +489,10 @@ class Pickup(pygame.sprite.Sprite):
     def __init__(self, game, x, y):
         self.groups = game.all_sprites, game.pick_ups
         pygame.sprite.Sprite.__init__(self, self.groups)
-        self.pickup_type = random.choice(["instant_kill", "nuke", "ray_gun"])
+        self.pickup_type = random.choice(["instant_kill", "nuke_pickup", "nuke_pickup"])
         self.game = game
-        self.image = pygame.image.load("images/nuke_pickup.png")
-        self.image = pygame.transform.scale(self.image, (TILE_SIZE*1.5, TILE_SIZE))
+        self.image = pygame.image.load("images/"+self.pickup_type+".png")
+        self.image = pygame.transform.scale(self.image, (TILE_SIZE, TILE_SIZE))
         self.rect = self.image.get_rect()
         self.rect.x = x
         self.rect.y = y
@@ -532,14 +532,13 @@ class Pickup(pygame.sprite.Sprite):
 
     def picked_up(self):
         # Implement effect based on pickup type
-
         if self.pickup_type == "instant_kill":
             self.instant_kill = pygame.mixer.Sound('Sounds/instant_kill.mp3')
             self.instant_kill.play()
             for zombie in self.game.zombies:
                 zombie.health = 1
 
-        elif self.pickup_type == "nuke":
+        elif self.pickup_type == "nuke_pickup":
             self.kaboom_sound = pygame.mixer.Sound('Sounds/kaboom.mp3')
             self.nuke_sound = pygame.mixer.Sound('Sounds/nuke_sound.mp3')
             self.kaboom_sound.play()
