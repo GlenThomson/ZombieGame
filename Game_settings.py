@@ -31,6 +31,8 @@ WHITE = (255, 255, 255)
 BLACK = (0, 0, 0)
 DARKGREY = (40, 40, 40)
 LIGHTGREY = (100, 100, 100)
+Red = (255, 51, 51)
+Purple = (153, 51, 255)
 
 # Gun 1 settings
 BULLET_SPEED = 20

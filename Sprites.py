@@ -158,6 +158,8 @@ class Zombie(pygame.sprite.Sprite):
         self.round_multiplier = 1 + 0.1 * game.current_round  # increase per round
         self.speed = (ZOMBIE_SPEED + ZOMBIE_SPEED * self.round_multiplier)
         self.health = ZOMBIE_HEALTH * self.round_multiplier
+        #checks if zombie is right next to wall to help with pathing
+        self.colliding_with_wall = False
 
     def update_path(self):
         self.path_obj = Path_Finding(self.game.player.get_tile_location(), self.pos, self.game)
@@ -249,13 +251,19 @@ class Zombie(pygame.sprite.Sprite):
         self.pos += self.vel
         self.hit_box.centerx = self.pos.x
 
-
+        colliding_with_wall1 = False
+        colliding_with_wall2 = False
         if self.is_near_wall():
-            wall_collision(self, self.game.walls, 'x')
+            colliding_with_wall1 = wall_collision(self, self.game.walls, 'x')
         self.hit_box.centery = self.pos.y
         if self.is_near_wall():
-            wall_collision(self, self.game.walls, 'y')
+            colliding_with_wall2 = wall_collision(self, self.game.walls, 'y')
         self.rect.center = self.hit_box.center
+        #holding bool flag if the zombie is stuck on a wall to help with path tracing
+        if colliding_with_wall1 or colliding_with_wall2:
+            self.colliding_with_wall = True
+        else:
+            self.colliding_with_wall = False
         # Get the grid coordinates of the zombie
 
     # the purpose of this code is to reduce the computational load of checking for wall collisions, by only checking when near a wall
@@ -279,6 +287,7 @@ class Zombie(pygame.sprite.Sprite):
                     if self.game.grid[y][x] == 1:
                         return True
 
+
     def take_damage(self):
         self.health -= 1
         self.game.blood_splatters.add(BloodSplatter(self.game, self.pos, duration=10))
@@ -287,7 +296,7 @@ class Zombie(pygame.sprite.Sprite):
             self.game.blood_splatters.add(BloodSplatter(self.game, self.pos, duration=5000))  # Longer effect when dead
 
                 # Determine if a pickup should drop
-            if random.randint(1, 2) == 1:  # 1 in 50 chance
+            if random.randint(1, 100) == 1:  # 1 in 50 chance
                 Pickup(self.game, self.rect.x, self.rect.y)
 
     def is_close_to_player(self):
@@ -309,9 +318,12 @@ class Zombie(pygame.sprite.Sprite):
             current_pos += step
             # Check if current position is inside a wall
             grid_x, grid_y = int(current_pos.x / TILE_SIZE), int(current_pos.y / TILE_SIZE)
-            if self.game.grid[grid_y][grid_x] == 1:  # Assuming 1 represents a wall
+            if self.game.grid[grid_y][grid_x] == 1 :  # Assuming 1 represents a wall
                 return False  # Line of sight is blocked by a wall
-        return True  # No obstruction found
+        if self.colliding_with_wall:
+            return False  # No obstruction found
+        else:
+            return True
 
 class Player(pygame.sprite.Sprite):
     def __init__(self, game, x, y):
@@ -644,3 +656,15 @@ class Grenade(pygame.sprite.Sprite):
         for zombie in self.game.zombies:
             if explosion_rect.colliderect(zombie.rect):
                 zombie.health -=100
+
+class ZombieSpawn(pygame.sprite.Sprite):
+    def __init__(self, game, x, y):
+        self.game = game
+        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE))
+        self.rect = self.image.get_rect()
+        self.x = x
+        self.y = y
+        self.rect.x = x * TILE_SIZE
+        self.rect.y = y * TILE_SIZE
+
+

@@ -1,13 +1,13 @@
 import random
 import tkinter as tk
-from tkinter import simpledialog
+from tkinter import simpledialog, messagebox
 
 import colors
 import pygame
 
 from Game_settings import *
 from Map import Camera
-from Sprites import Zombie, Wall, Player, Bullet,Barb_wire,Pickup,Grenade
+from Sprites import Zombie, Wall, Player, Bullet,Barb_wire,Pickup,Grenade,ZombieSpawn
 from Toolbar import Toolbar
 from utility_functions import *
 
@@ -85,7 +85,8 @@ class game_main():
         self.blood_splatters = pygame.sprite.Group()
         self.pick_ups = pygame.sprite.Group()
         self.grenades = pygame.sprite.Group()
-        self.player = Player(self, TILE_SIZE *20, TILE_SIZE*20)
+        self.zombie_spawns = []
+        self.player = Player(self, 20* TILE_SIZE, 20* TILE_SIZE)
 
         # creates all the walls
         for row, tiles in enumerate(self.grid):
@@ -94,6 +95,11 @@ class game_main():
                     Wall(self, col, row)
                 elif tile == 2:
                     Barb_wire(self, col, row)
+                elif tile == 3:
+                    self.zombie_spawns.append(ZombieSpawn(self,col* TILE_SIZE, row* TILE_SIZE))
+                elif tile == 4:
+                    self.player.pos.x = col* TILE_SIZE
+                    self.player.pos.y = row* TILE_SIZE
         # sets the map width and height
         self.map_width = len(self.grid[0]) * TILE_SIZE
         self.map_height = len(self.grid) * TILE_SIZE
@@ -113,7 +119,7 @@ class game_main():
         self.blood_splatters.draw(self.display)
         #self.draw_grid(self.display, self.grid)
         for sprite in self.all_sprites:
-            if sprite not in self.walls and sprite not in self.barb_wire:
+            if sprite not in self.walls and sprite not in self.barb_wire and sprite not in self.zombie_spawns:
                 self.display.blit(sprite.image, self.camera.apply(sprite))
         self.toolbar.draw()
         self.player.draw_health_bar()
@@ -203,14 +209,9 @@ class game_main():
                 zombie.speed = ZOMBIE_SPEED
 
     def zombie_spawn(self):
-        edge = random.choice(["top", "bottom", "left", "right"])
-
-        if edge in ["top", "bottom"]:
-            x = random.randint(2, self.map_width // TILE_SIZE - 3) * TILE_SIZE
-            y = 2 * TILE_SIZE if edge == "top" else (self.map_height // TILE_SIZE - 3) * TILE_SIZE
-        else:  # left or right
-            y = random.randint(2, self.map_height // TILE_SIZE - 3) * TILE_SIZE
-            x = 2 * TILE_SIZE if edge == "left" else (self.map_width // TILE_SIZE - 3) * TILE_SIZE
+        zombie_spawn = random.choice(self.zombie_spawns)  # Select a random spawn point
+        x = zombie_spawn.x
+        y = zombie_spawn.y
         self.zombies.add(Zombie(x, y, self))
 
     def manage_zombie_spawning(self):
@@ -377,10 +378,26 @@ class MapMakerMode:
         # looks for mouse clicks on grid to add or delete walls
         mouse_pressed = pygame.mouse.get_pressed()
         if mouse_pressed[0]:  # If left mouse button is pressed
-            #gets mouse ajusted for screen scrolling
-            x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
-            grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
-            self.grid[grid_y][grid_x] = self.item_number  # Set to wall
+            #checks to maker sure that there arnt two player spawns being placed
+            if self.item_number == 4:
+                player_spawn_placed = False
+                for y, row in enumerate(self.grid):
+                    for x, tile in enumerate(row):
+                        if tile == 4:
+                            player_spawn_placed = True
+                # if the player spawn has not been placed then alow it to be
+                if not player_spawn_placed:
+                    #gets mouse ajusted for screen scrolling
+                    x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
+                    grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
+                    self.grid[grid_y][grid_x] = self.item_number  # Set to wall
+
+            else:
+                #gets mouse ajusted for screen scrolling
+                x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
+                grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
+                self.grid[grid_y][grid_x] = self.item_number  # Set to wall
+
         elif mouse_pressed[2]:  # If right mouse button is pressed
             x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
             grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
@@ -411,8 +428,11 @@ class MapMakerMode:
                     pygame.draw.rect(self.game.display, LIGHTGREY, (
                     (x * TILE_SIZE) + self.offset.x, (y * TILE_SIZE) + self.offset.y, TILE_SIZE, TILE_SIZE))
                 elif tile == 3:
-                    pygame.draw.rect(self.game.display, WHITE, (
+                    pygame.draw.rect(self.game.display, Red, (
                         (x * TILE_SIZE) + self.offset.x, (y * TILE_SIZE) + self.offset.y, TILE_SIZE, TILE_SIZE))
+                elif tile == 4:
+                    pygame.draw.rect(self.game.display, Purple, (
+                    (x * TILE_SIZE) + self.offset.x, (y * TILE_SIZE) + self.offset.y, TILE_SIZE, TILE_SIZE))
 
 # Creates the game object and starts the programe
 game = game_main()

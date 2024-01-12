@@ -11,7 +11,7 @@ class Toolbar:
         self.item_button = pygame.Rect(300, 0, 100, 50)
         self.button_font = pygame.font.Font(None, 36)
         self.text_font = pygame.font.Font(None, 36)
-        self.pop_up_menu = PopUpMenu(self.game.display, ['delete','wall','barb wire', 'Door', 'zombie spawn'], self.text_font)
+        self.pop_up_menu = PopUpMenu(self.game.display, ['delete','wall','barb wire', 'zombie spawn','player spawn'], self.text_font)
 
     def draw(self):
         # Draw the main menu button always
@@ -95,7 +95,6 @@ class PopUpMenu:
             for i, rect in enumerate(self.option_rects):
                 if rect.collidepoint(x, y):
                     self.item_number = i
-                    print(i)
                     self.selected_option = self.options[i]
                     self.is_open = False
                     return self.selected_option
