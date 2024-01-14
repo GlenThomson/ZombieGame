@@ -12,6 +12,7 @@ class Toolbar:
         self.button_font = pygame.font.Font(None, 36)
         self.text_font = pygame.font.Font(None, 36)
         self.pop_up_menu = PopUpMenu(self.game.display, ['delete','wall','barb wire', 'zombie spawn','player spawn'], self.text_font)
+        self.button_clicked = False
 
     def draw(self):
         # Draw the main menu button always
@@ -51,13 +52,17 @@ class Toolbar:
             x, y = pygame.mouse.get_pos()
             if self.item_button.collidepoint((x,y)):
                 self.pop_up_menu.is_open = True
+                self.button_clicked = True
             # Check if save or menu button is clicked
             if self.save_button.collidepoint((x, y)):
                 self.game.map_maker_mode.save_map()
+                self.button_clicked = True
             elif self.menu_button.collidepoint((x, y)):
                 self.game.mode = "MENU"
+                self.button_clicked = True
             elif self.open_button.collidepoint((x, y)):
                 self.game.grid = load_map_from_file()
+                self.button_clicked = True
                 # self.game.map = Map(self.game)
 
 

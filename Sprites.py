@@ -443,7 +443,7 @@ class Barb_wire(pygame.sprite.Sprite):
         self.rect.y = y * TILE_SIZE
 
 class Bullet(pygame.sprite.Sprite):
-    def __init__(self, game, x, y, direction, angle):
+    def __init__(self, game, x, y, direction, angle,spread):
         self.groups = game.all_sprites
         self.game = game
         pygame.sprite.Sprite.__init__(self, self.groups)
@@ -453,7 +453,7 @@ class Bullet(pygame.sprite.Sprite):
         # self.rect.center = (x, y)
         self.speed = BULLET_SPEED
         self.angle = math.radians(angle)
-        self.spread = random.uniform(-BULLET_SPREAD, BULLET_SPREAD)
+        self.spread = random.uniform(-spread, spread)
         self.hit_count = 0
         # calculate the speed in x and y direction
         self.vel = vector(direction.x * self.speed, direction.y * self.speed).rotate(self.spread)
@@ -463,6 +463,10 @@ class Bullet(pygame.sprite.Sprite):
         # sets up the hitbox of the bullet
         self.hit_box = pygame.Rect(0, 0, self.rect.width, self.rect.height)
         self.hit_box.center = self.rect.center
+
+
+
+
 
     def update(self):
         # add the speed to the x and y postion
@@ -667,4 +671,96 @@ class ZombieSpawn(pygame.sprite.Sprite):
         self.rect.x = x * TILE_SIZE
         self.rect.y = y * TILE_SIZE
 
+class Gun:
+    def __init__(self, game):
+        self.game = game
+        self.type = None
+        self.bullet_speed = 0
+        self.bullet_spread = 0
+        self.fire_rate = 0
+        self.damage = 0
+        self.penetration = 0
+        self.magazine_size = 0
+        self.reload_time = 0
+        self.shoot_sound = None
+        self.reload_sound = pygame.mixer.Sound('Sounds/reload_sound.mp3')
+        self.current_ammo = 0
+        self.is_reloading = False
+        self.last_shot_time = 0
+        self.gun_sound = pygame.mixer.Sound('Sounds/machinegunloopwav-14862.mp3')
+        self.bullet_casing_sound = pygame.mixer.Sound('Sounds/Gun Shell Fall2 Wood - QuickSounds.com.mp3')
+        self.gun_sound_playing = False
+        self.time_between_bullets =0
+        self.time_left_reloading = 0
+        self.reload_start_time = None  # Track when reloading started
 
+    def set_gun_type(self, gun_type):
+        self.type = gun_type
+        self._update_gun_settings()
+
+    def _update_gun_settings(self):
+        if self.type == "Pistol":
+            self.bullet_speed = 2
+            self.bullet_spread = 3
+            self.fire_rate = 4
+            self.damage = 1
+            self.penetration = 2
+            self.magazine_size = 10
+            self.reload_time = 2
+            self.shoot_sound = pygame.mixer.Sound('Sounds/pistol_shot.mp3')
+            #self.reload_sound = pygame.mixer.Sound('Sounds/pistol_reload.wav')
+
+        elif self.type == "Shotgun":
+            self.bullet_speed = 15
+            self.bullet_spread = 12
+            self.fire_rate = 1
+            self.damage = 3
+            self.penetration = 2
+            self.magazine_size = 5
+            self.reload_time = 3
+            self.shoot_sound = pygame.mixer.Sound('Sounds/shotgun_sound.mp3')
+        # More elif blocks for other gun types
+        self.current_ammo = self.magazine_size
+
+    def shoot(self):
+        if self.type == "Pistol":
+            current_time = pygame.time.get_ticks()
+            if self.current_ammo > 0 and not self.is_reloading and current_time - self.last_shot_time >= 1000 / self.fire_rate:
+                self.last_shot_time = current_time
+                self.current_ammo -= 1
+                self.shoot_sound.play()
+                self._fire_bullet()
+
+        elif self.type == "Shotgun":
+            current_time = pygame.time.get_ticks()
+            if self.current_ammo > 0 and not self.is_reloading and current_time - self.last_shot_time >= 1000 / self.fire_rate:
+                self.last_shot_time = current_time
+                self.current_ammo -= 1
+                self.shoot_sound.play()
+                for i in range(15):
+                    self._fire_bullet()
+
+        if self.current_ammo <= 0:
+            self.reload()
+
+    def reload(self):
+        if not self.is_reloading:
+            self.is_reloading = True
+            self.reload_start_time = pygame.time.get_ticks()  # Store the current time
+            self.reload_sound.play()
+
+    def update(self):
+        current_time = pygame.time.get_ticks()
+        # Check if reloading is in progress and if the reload time has passed
+        if self.is_reloading and (current_time - self.reload_start_time >= self.reload_time * 1000):
+            self.is_reloading = False
+            self.current_ammo = self.magazine_size
+            # Possibly play a sound or trigger an event to indicate reloading is complete
+
+    def _fire_bullet(self):
+        # Common method to fire a bullet
+        mx, my = get_adjusted_mouse_position(self.game.camera.camera.x, self.game.camera.camera.y)
+        dx, dy = mx - self.game.player.rect.centerx, my - self.game.player.rect.centery
+        direction = pygame.math.Vector2(dx, dy).normalize()
+        new_bullet = Bullet(self.game, self.game.player.rect.centerx, self.game.player.rect.centery, direction, self.game.player.angle, self.bullet_spread)
+        self.game.bullets.add(new_bullet)

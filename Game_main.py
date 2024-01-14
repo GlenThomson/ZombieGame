@@ -7,7 +7,7 @@ import pygame
 
 from Game_settings import *
 from Map import Camera
-from Sprites import Zombie, Wall, Player, Bullet,Barb_wire,Pickup,Grenade,ZombieSpawn
+from Sprites import Zombie, Wall, Player, Bullet,Barb_wire,Pickup,Grenade,ZombieSpawn,Gun
 from Toolbar import Toolbar
 from utility_functions import *
 
@@ -34,13 +34,11 @@ class game_main():
         self.font = pygame.font.Font(None, 36)
         self.gold_color = (255, 215, 0)
         self.end_round_sound = pygame.mixer.Sound('Sounds/end_round_sound.mp3')
-        self.gun_sound = pygame.mixer.Sound('Sounds/machinegunloopwav-14862.mp3')
-        self.bullet_casing_sound = pygame.mixer.Sound('Sounds/Gun Shell Fall2 Wood - QuickSounds.com.mp3')
-        self.gun_sound_playing = False
         #initialize varialbes for round displayed each new round
         self.round_text_countdown =500
         self.display_round_text = False
         self.round_text_font = pygame.font.Font(None, 100)
+        self.gun = Gun(self)
 
         #
     # Main game loop
@@ -87,7 +85,7 @@ class game_main():
         self.grenades = pygame.sprite.Group()
         self.zombie_spawns = []
         self.player = Player(self, 20* TILE_SIZE, 20* TILE_SIZE)
-
+        self.gun.set_gun_type("Shotgun")
         # creates all the walls
         for row, tiles in enumerate(self.grid):
             for col, tile in enumerate(tiles):
@@ -100,6 +98,7 @@ class game_main():
                 elif tile == 4:
                     self.player.pos.x = col* TILE_SIZE
                     self.player.pos.y = row* TILE_SIZE
+
         # sets the map width and height
         self.map_width = len(self.grid[0]) * TILE_SIZE
         self.map_height = len(self.grid) * TILE_SIZE
@@ -167,22 +166,8 @@ class game_main():
                 # code for firing the gun
         mouse_state = pygame.mouse.get_pressed()
         if mouse_state[0]:
-            # Getting the direction from the player to the mouse
-            mx, my = get_adjusted_mouse_position(self.camera.camera.x,self.camera.camera.y)
-            dx, dy = mx - self.player.rect.centerx, my - self.player.rect.centery
-            # Calculating angle in degrees
-            direction = pygame.math.Vector2(dx, dy).normalize()
-            # Creating a new bullet and adding it to the bullets group
-            new_bullet = Bullet(self, self.player.rect.centerx, self.player.rect.centery, direction, self.player.angle)
-            self.bullets.add(new_bullet)
-
-        if mouse_state[0] and self.gun_sound_playing==False:
-            self.gun_sound.play()
-            self.gun_sound_playing = True
-        elif not mouse_state[0] and self.gun_sound_playing ==True:
-            self.bullet_casing_sound.play()
-            self.gun_sound.stop()
-            self.gun_sound_playing = False
+            self.gun.shoot()
+            self.gun.update()
         #checkks for grenade throw and throws it if player has grenades
         keys = pygame.key.get_pressed()
         if keys[pygame.K_g]:
@@ -195,10 +180,11 @@ class game_main():
         for zombie in self.zombies:
             for bullet in self.bullets:
                 #checks if zombies get hit by a bullet
-                if zombie.hit_box.colliderect(bullet.hit_box):
+                if zombie.rect.colliderect(bullet.hit_box):
+                    bullet.hit_count+=1
                     zombie.take_damage()
                     #if bullet has hit its max zombies it dissapears
-                    if bullet.hit_count >= BULLET_PENATRATION:
+                    if bullet.hit_count >= self.gun.penetration:
                         bullet.kill()
 
             #slows down the zombie if touching player and takes health off the player
@@ -366,42 +352,50 @@ class MapMakerMode:
 
     def events(self):
         for event in pygame.event.get():
-            game.toolbar.handle_events(event)  # checks for tool bar events
             if event.type == pygame.QUIT:
                 quit_application()
+            game.toolbar.handle_events(event)  # checks for tool bar events
             selected_option = self.game.toolbar.pop_up_menu.handle_event(event)
             #updates the item selected from the pop up menue to place on map
             if selected_option:
-                self.item_number=self.game.toolbar.pop_up_menu.item_number
+                self.item_number = self.game.toolbar.pop_up_menu.item_number
+                selected_option = False# sets back to false to prevent things being placed when user is using the popup menue
+                #prevents items being placed when using the menu buttons
+            elif game.toolbar.button_clicked:
+                game.toolbar.button_clicked = False
+
+            else:
+                mouse_pressed = pygame.mouse.get_pressed()
+                if mouse_pressed[0]:  # If left mouse button is pressed
+                    #checks to maker sure that there arnt two player spawns being placed
+                    if self.item_number == 4:
+                        player_spawn_placed = False
+                        for y, row in enumerate(self.grid):
+                            for x, tile in enumerate(row):
+                                if tile == 4:
+                                    player_spawn_placed = True
+                        # if the player spawn has not been placed then alow it to be
+                        if not player_spawn_placed:
+                            #gets mouse ajusted for screen scrolling
+                            x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
+                            grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
+                            self.grid[grid_y][grid_x] = self.item_number  # Set to wall
+
+                    else:
+                        #gets mouse ajusted for screen scrolling
+                        x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
+                        grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
+                        self.grid[grid_y][grid_x] = self.item_number  # Set to wall
+
+                elif mouse_pressed[2]:  # If right mouse button is pressed
+                    x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
+                    grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
+                    self.grid[grid_y][grid_x] = 0  # Set to empty
+
         # checks for screen scrolling
         self.screen_scrolling()
         # looks for mouse clicks on grid to add or delete walls
-        mouse_pressed = pygame.mouse.get_pressed()
-        if mouse_pressed[0]:  # If left mouse button is pressed
-            #checks to maker sure that there arnt two player spawns being placed
-            if self.item_number == 4:
-                player_spawn_placed = False
-                for y, row in enumerate(self.grid):
-                    for x, tile in enumerate(row):
-                        if tile == 4:
-                            player_spawn_placed = True
-                # if the player spawn has not been placed then alow it to be
-                if not player_spawn_placed:
-                    #gets mouse ajusted for screen scrolling
-                    x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
-                    grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
-                    self.grid[grid_y][grid_x] = self.item_number  # Set to wall
 
-            else:
-                #gets mouse ajusted for screen scrolling
-                x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
-                grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
-                self.grid[grid_y][grid_x] = self.item_number  # Set to wall
-
-        elif mouse_pressed[2]:  # If right mouse button is pressed
-            x, y = get_adjusted_mouse_position(int(self.offset.x),int(self.offset.y))
-            grid_x, grid_y = x // TILE_SIZE, y // TILE_SIZE
-            self.grid[grid_y][grid_x] = 0  # Set to empty
 
 
     def save_map(self):
