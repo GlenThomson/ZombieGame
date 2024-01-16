@@ -291,13 +291,13 @@ class Zombie(pygame.sprite.Sprite):
     def take_damage(self):
         self.health -= 1
         self.game.blood_splatters.add(BloodSplatter(self.game, self.pos, duration=10))
-        if self.health <= 0:
+        if self.health <= 0 and self.alive():
             self.game.zombie_kills +=1
             self.game.blood_splatters.add(BloodSplatter(self.game, self.pos, duration=5000))  # Longer effect when dead
-
                 # Determine if a pickup should drop
             if random.randint(1, 100) == 1:  # 1 in 50 chance
                 Pickup(self.game, self.rect.x, self.rect.y)
+            self.kill()
 
     def is_close_to_player(self):
         distance = self.pos.distance_to(self.game.player.pos)
