@@ -99,7 +99,12 @@ class Player(pygame.sprite.Sprite):
         mx, my = adjusted_mouse_position(cam_x, cam_y)
         rel_x, rel_y = mx - self.pos.x, my - self.pos.y
         self.angle = (180 / math.pi) * -math.atan2(rel_y, rel_x)
-        self.image = pygame.transform.rotate(self.original_image, self.angle)
+        # Subtle bob while moving so the player isn't a perfectly rigid sprite.
+        if self.vel.length_squared() > 0.1:
+            bob = 4 * math.sin(pygame.time.get_ticks() / 80)
+        else:
+            bob = 0
+        self.image = pygame.transform.rotate(self.original_image, self.angle + bob)
         self.rect = self.image.get_rect(center=self.pos)
 
     def take_damage(self, amount: float = BULLET_DAMAGE):

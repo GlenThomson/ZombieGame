@@ -209,6 +209,29 @@ already separated systems.
 
 ---
 
+## Status (snapshot)
+
+| Item | State |
+|---|---|
+| Restructure into `game/` package | done |
+| Tier 1 — points, doors, wall buys, windows | done |
+| Tier 2.1 — zombie variants (Crawler, Runner, Hellhound + dogs round) | done |
+| Tier 2.2 — Mystery Box (8 weapons in pool, spin animation) | done |
+| Tier 2.3 — Pack-a-Punch | done |
+| Tier 2.4 — Perks (Juggernog, Speed Cola, Double Tap, Stamin-Up, Mule Kick) | done |
+| Tier 2.5 — Power-ups: Max Ammo, Double Points, Carpenter | done |
+| Tier 2.5 — Fire Sale | not done (drop the box price for 30s) |
+| Tier 0 — muzzle flash, damage flash, floating points, low-HP overlay, player bob | done |
+| Tier 0 — proper walking animation (needs sprite sheets) | not done |
+| Tier 0 — footstep + heartbeat audio | not done (needs sounds) |
+| Tier 3.1 — More weapon definitions (8 total: Pistol/Shotgun/AK74u/Galil/SMG/LMG/Sniper/Ray Gun) | done |
+| Tier 3.2 — Reserve ammo per weapon | not done |
+| Tier 3.3 — Special rounds | partial (hellhound rounds done; max-ammo end-of-round drop not yet) |
+| Tier 3.4 — Down + revive state | not done |
+| Tier 4 — Local co-op | not done |
+
+---
+
 ## Asset sourcing checklist
 
 Before each tier:
