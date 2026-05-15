@@ -71,7 +71,12 @@ class Window(pygame.sprite.Sprite):
         return False
 
     def _collapse(self):
-        # Window fully broken: remove from blocking groups so zombies pass.
+        # Window fully broken: remove from blocking groups AND mark the grid
+        # tile as empty so pathfinding stops routing around it.
+        from game.world.tile import TileType
+        if 0 <= self.y_tile < len(self.scene.grid) and 0 <= self.x_tile < len(self.scene.grid[0]):
+            if self.scene.grid[self.y_tile][self.x_tile] == TileType.WINDOW:
+                self.scene.grid[self.y_tile][self.x_tile] = TileType.EMPTY
         self.scene.interactables.discard(self)
         self.kill()
 

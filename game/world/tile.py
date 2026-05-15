@@ -19,5 +19,21 @@ class TileType(IntEnum):
 
     @classmethod
     def is_blocking(cls, value: int) -> bool:
-        """Whether this tile blocks movement and pathfinding."""
-        return value in (cls.WALL, cls.DOOR_CLOSED)
+        """Whether this tile blocks movement and pathfinding.
+
+        Includes every entity that gets added to scene.walls so zombies
+        path AROUND machines/boxes/intact-windows instead of trying to
+        walk through and getting wedged."""
+        return value in _BLOCKING_TILES
+
+
+# Module-level set so the lookup is cheap.
+_BLOCKING_TILES: frozenset[int] = frozenset({
+    TileType.WALL,
+    TileType.DOOR_CLOSED,
+    TileType.WINDOW,
+    TileType.WALL_BUY,
+    TileType.PERK_MACHINE,
+    TileType.MYSTERY_BOX,
+    TileType.PACK_A_PUNCH,
+})
