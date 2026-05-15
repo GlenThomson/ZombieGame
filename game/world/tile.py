@@ -14,9 +14,8 @@ class TileType(IntEnum):
     WINDOW = 7
     WALL_BUY = 8
     PERK_MACHINE = 9
-    # Reserved for upcoming features:
-    # MYSTERY_BOX = 10
-    # PACK_A_PUNCH = 11
+    MYSTERY_BOX = 10
+    PACK_A_PUNCH = 11
 
     @classmethod
     def is_blocking(cls, value: int) -> bool:

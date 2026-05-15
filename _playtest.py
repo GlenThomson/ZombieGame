@@ -80,6 +80,8 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
     starting_points = scene.player.points
     saw_perk_bought = False
     starting_max_health = scene.player.max_health
+    saw_mystery_box_used = False
+    saw_pap_used = False
 
     for frame in range(frames):
         # Drive movement: cycle WASD every 30 frames so the player wanders
@@ -149,6 +151,23 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
             scene._fire_interaction()
             saw_perk_bought = scene.perk_system.has(pm.perk.name) and \
                 scene.player.max_health > starting_max_health
+        if frame == 130 and scene.mystery_boxes:
+            mb = next(iter(scene.mystery_boxes))
+            scene.player.points = 99999
+            scene.focused_interactable = mb
+            scene._fire_interaction()  # start spinning
+            # Force the spin to complete
+            mb.spin_started_at = pygame.time.get_ticks() - 99999
+            mb.update()
+            scene._fire_interaction()  # take weapon
+            inv_now = {s.name for s in scene.player.inventory.slots if s is not None}
+            saw_mystery_box_used = bool(inv_now - {"Pistol"})
+        if frame == 140 and scene.pack_a_punch_machines:
+            pap = next(iter(scene.pack_a_punch_machines))
+            scene.player.points = 99999
+            scene.focused_interactable = pap
+            scene._fire_interaction()
+            saw_pap_used = scene.player.weapon is not None and scene.player.weapon.is_packed
         if frame == 120 and starting_windows:
             win = starting_windows[0]
             if win.alive():
@@ -207,6 +226,8 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
         "saw_window_break": saw_window_break,
         "saw_points_awarded": saw_points_awarded,
         "saw_perk_bought": saw_perk_bought,
+        "saw_mystery_box_used": saw_mystery_box_used,
+        "saw_pap_used": saw_pap_used,
     }
 
 
@@ -271,21 +292,24 @@ def main():
     for m in maps:
         try:
             stats = run_one_map(m, frames=600)
-            all_required = (
-                stats["saw_round_advance"]
-                and stats["saw_game_over"]
-                and stats["saw_door_opened"]
-                and stats["saw_wall_buy_used"]
-                and stats["saw_window_break"]
-                and stats["saw_points_awarded"]
-                and stats["saw_perk_bought"]
-            )
+            all_required = all([
+                stats["saw_round_advance"],
+                stats["saw_game_over"],
+                stats["saw_door_opened"],
+                stats["saw_wall_buy_used"],
+                stats["saw_window_break"],
+                stats["saw_points_awarded"],
+                stats["saw_perk_bought"],
+                stats["saw_mystery_box_used"],
+                stats["saw_pap_used"],
+            ])
             tag = "PASS" if all_required else "OK  "
             print(
                 f"{tag} {m}  r{stats['final_round']} k{stats['final_kills']} "
                 f"door:{stats['saw_door_opened']} wb:{stats['saw_wall_buy_used']} "
                 f"win:{stats['saw_window_break']} perk:{stats['saw_perk_bought']} "
-                f"pts:{stats['saw_points_awarded']} go:{stats['saw_game_over']}"
+                f"box:{stats['saw_mystery_box_used']} pap:{stats['saw_pap_used']} "
+                f"go:{stats['saw_game_over']}"
             )
         except Exception as e:
             print(f"FAIL {m}: {type(e).__name__}: {e}")

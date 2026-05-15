@@ -1,12 +1,13 @@
 """A single equipped weapon instance. Holds its own ammo + reload state.
 
-Reads its base stats from a WeaponDef and applies the player's ModifierStack
-on demand, so perks like Speed Cola (faster reload) or Pack-a-Punch (more
-damage) can be plugged in later without touching this class."""
+Stats are computed from the WeaponDef + the owner's ModifierStack (perks
+like Speed Cola affect *all* weapons) + the weapon's own ModifierStack
+(Pack-a-Punch affects *this* weapon only)."""
 import pygame
 
 from game import assets
 from game.entities.bullet import Bullet
+from game.stats.modifiers import ModifierStack
 from game.utils import adjusted_mouse_position
 from game.weapons.definitions import WEAPON_DEFS
 
@@ -17,36 +18,57 @@ class Weapon:
     def __init__(self, owner, def_name: str):
         self.owner = owner
         self.definition = WEAPON_DEFS[def_name]
+        self.modifiers = ModifierStack()
         self.shoot_sound = assets.sound(self.definition.shoot_sound)
         self.reload_sound = assets.sound("reload_sound.mp3")
         self.current_ammo = self.definition.magazine_size
         self.is_reloading = False
         self.last_shot_time = 0
         self.reload_started_at = 0
+        self.is_packed = False  # set True when Pack-a-Punched
+
+    def _stat(self, key: str, base: float) -> float:
+        # Owner perks first, then this weapon's own modifiers (PaP etc).
+        owner_adjusted = self.owner.modifiers.apply(key, base)
+        return self.modifiers.apply(key, owner_adjusted)
 
     @property
     def name(self) -> str:
-        return self.definition.name
+        return self.definition.name + (" PaP" if self.is_packed else "")
 
     @property
     def magazine_size(self) -> int:
-        return int(self.owner.modifiers.apply("magazine_size", self.definition.magazine_size))
+        return int(self._stat("magazine_size", self.definition.magazine_size))
 
     @property
     def fire_rate(self) -> float:
-        return self.owner.modifiers.apply("fire_rate", self.definition.fire_rate)
+        return self._stat("fire_rate", self.definition.fire_rate)
 
     @property
     def reload_time(self) -> float:
-        return self.owner.modifiers.apply("reload_time", self.definition.reload_time)
+        return self._stat("reload_time", self.definition.reload_time)
 
     @property
     def damage(self) -> int:
-        return int(self.owner.modifiers.apply("damage", self.definition.damage))
+        return int(self._stat("damage", self.definition.damage))
 
     @property
     def penetration(self) -> int:
-        return int(self.owner.modifiers.apply("penetration", self.definition.penetration))
+        return int(self._stat("penetration", self.definition.penetration))
+
+    def apply_pack_a_punch(self):
+        from settings import (
+            PACK_A_PUNCH_DAMAGE_MULT,
+            PACK_A_PUNCH_FIRE_RATE_MULT,
+            PACK_A_PUNCH_MAG_MULT,
+        )
+        self.modifiers.add("damage", "PaP", multiplier=PACK_A_PUNCH_DAMAGE_MULT)
+        self.modifiers.add("fire_rate", "PaP", multiplier=PACK_A_PUNCH_FIRE_RATE_MULT)
+        self.modifiers.add("magazine_size", "PaP", multiplier=PACK_A_PUNCH_MAG_MULT)
+        self.is_packed = True
+        # Refill to the new bigger mag.
+        self.current_ammo = self.magazine_size
+        self.is_reloading = False
 
     def shoot(self):
         now = pygame.time.get_ticks()

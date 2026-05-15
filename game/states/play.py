@@ -26,6 +26,8 @@ from game.entities.door import Door
 from game.entities.wall_buy import WallBuy
 from game.entities.window import Window
 from game.entities.perk_machine import PerkMachine
+from game.entities.mystery_box import MysteryBox
+from game.entities.pack_a_punch import PackAPunch
 from game.stats.perks import PerkSystem, PERKS
 from game.world.tile import TileType
 from game.ui.hud import HUD
@@ -47,6 +49,8 @@ class PlayState(State):
         self.wall_buys = pygame.sprite.Group()
         self.windows = pygame.sprite.Group()
         self.perk_machines = pygame.sprite.Group()
+        self.mystery_boxes = pygame.sprite.Group()
+        self.pack_a_punch_machines = pygame.sprite.Group()
         self.zombie_spawns: list[ZombieSpawn] = []
         self.interactables: set = set()
         self.interaction_prompt: str | None = None
@@ -117,6 +121,12 @@ class PlayState(State):
                     perk_name = self.perk_machine_perks.get((col, row), PERK_MACHINE_DEFAULT_PERK)
                     pm = PerkMachine(self, col, row, perk_name)
                     self.interactables.add(pm)
+                elif tile == TileType.MYSTERY_BOX:
+                    mb = MysteryBox(self, col, row)
+                    self.interactables.add(mb)
+                elif tile == TileType.PACK_A_PUNCH:
+                    pap = PackAPunch(self, col, row)
+                    self.interactables.add(pap)
         self._player_spawn_set = player_spawn_set
 
     def _ensure_spawns_exist(self):
@@ -199,7 +209,9 @@ class PlayState(State):
         has_wall_buy = any(w for w in self.wall_buys)
         has_window = any(w for w in self.windows)
         has_perk = any(w for w in self.perk_machines)
-        if has_door and has_wall_buy and has_window and has_perk:
+        has_box = any(w for w in self.mystery_boxes)
+        has_pap = any(w for w in self.pack_a_punch_machines)
+        if has_door and has_wall_buy and has_window and has_perk and has_box and has_pap:
             return
 
         # Find candidate tiles: walls adjacent to empty tiles work for doors
@@ -268,6 +280,20 @@ class PlayState(State):
                 self.grid[y][x] = TileType.PERK_MACHINE
                 pm = PerkMachine(self, x, y, PERK_MACHINE_DEFAULT_PERK)
                 self.interactables.add(pm)
+        if not has_box:
+            spot = take_one()
+            if spot:
+                x, y = spot
+                self.grid[y][x] = TileType.MYSTERY_BOX
+                mb = MysteryBox(self, x, y)
+                self.interactables.add(mb)
+        if not has_pap:
+            spot = take_one()
+            if spot:
+                x, y = spot
+                self.grid[y][x] = TileType.PACK_A_PUNCH
+                pap = PackAPunch(self, x, y)
+                self.interactables.add(pap)
 
     # ---- per-frame ----
 
@@ -312,6 +338,8 @@ class PlayState(State):
         self.grenades.update()
         for window in list(self.windows):
             window.update_against_zombies()
+        for box in list(self.mystery_boxes):
+            box.update()
 
         self._sprite_interactions()
         self._update_interaction_focus()
@@ -385,17 +413,20 @@ class PlayState(State):
 
         self.blood_splatters.draw(self.surface)
 
-        # Doors / wall buys / windows / perk machines are visible (unlike
-        # Wall / BarbWire which are invisible — the world is the background image).
-        for group in (self.doors, self.wall_buys, self.windows, self.perk_machines):
+        # Visible interactable groups (Wall / BarbWire are invisible —
+        # the world is the background image).
+        visible_interactables = (
+            self.doors, self.wall_buys, self.windows,
+            self.perk_machines, self.mystery_boxes, self.pack_a_punch_machines,
+        )
+        for group in visible_interactables:
             for sprite in group:
                 self.surface.blit(sprite.image, self.camera.apply(sprite))
 
         for sprite in self.all_sprites:
             if sprite in self.walls or sprite in self.barb_wire:
                 continue
-            if (sprite in self.doors or sprite in self.wall_buys
-                    or sprite in self.windows or sprite in self.perk_machines):
+            if any(sprite in g for g in visible_interactables):
                 continue
             self.surface.blit(sprite.image, self.camera.apply(sprite))
         for sprite in self.zombies:
