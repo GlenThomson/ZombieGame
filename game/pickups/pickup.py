@@ -1,11 +1,22 @@
 """On-ground pickup that flickers, expires, and applies a registered effect
 when the player walks over it."""
+import os
 import random
 import pygame
 
 from settings import TILE_SIZE, PICKUP_DURATION_MS
 from game import assets
 from game.pickups import effects
+
+
+def _placeholder_icon(label: str, fill: tuple[int, int, int]) -> pygame.Surface:
+    surf = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+    pygame.draw.rect(surf, fill, surf.get_rect())
+    pygame.draw.rect(surf, (255, 255, 255), surf.get_rect(), 2)
+    font = pygame.font.Font(None, 22)
+    text = font.render(label, True, (255, 255, 255))
+    surf.blit(text, text.get_rect(center=(TILE_SIZE // 2, TILE_SIZE // 2)))
+    return surf
 
 
 class Pickup(pygame.sprite.Sprite):
@@ -16,13 +27,19 @@ class Pickup(pygame.sprite.Sprite):
             names, weights = effects.weighted_names()
             kind = random.choices(names, weights=weights, k=1)[0]
         self.kind = kind
-        self.image = assets.image(f"{self.kind}.png", scale=(TILE_SIZE, TILE_SIZE)).copy()
+        self.image = self._load_image(kind)
         self.rect = self.image.get_rect(topleft=(x, y))
-
         self.spawn_time = pygame.time.get_ticks()
         self.flicker_period_ms = 1000
         self.next_flicker_at = self.spawn_time + self.flicker_period_ms
         self.visible = True
+
+    def _load_image(self, kind: str) -> pygame.Surface:
+        png_path = os.path.join("assets", "images", f"{kind}.png")
+        if os.path.isfile(png_path):
+            return assets.image(f"{kind}.png", scale=(TILE_SIZE, TILE_SIZE)).copy()
+        icon = effects.icon_for(kind) or (kind[:2].upper(), (180, 180, 180))
+        return _placeholder_icon(*icon)
 
     def update(self):
         now = pygame.time.get_ticks()

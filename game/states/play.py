@@ -58,6 +58,10 @@ class PlayState(State):
         self.wall_buy_weapons = dict(wall_buy_weapons or {})
         self.perk_machine_perks = dict(perk_machine_perks or {})
 
+        # Timed effects (e.g. Double Points). Each entry: name → (expire_ms, on_expire).
+        self.timed_effects: dict[str, tuple[int, callable]] = {}
+        self.points_multiplier = 1.0
+
         # Camera + map dimensions need to exist before Player so Player can
         # call camera-relative helpers in __init__.
         self.map_width = len(grid[0]) * TILE_SIZE
@@ -311,7 +315,33 @@ class PlayState(State):
 
         self._sprite_interactions()
         self._update_interaction_focus()
+        self._tick_timed_effects()
         self.round_manager.tick(dt_s)
+
+    # ---- timed effects (Double Points etc.) ----
+
+    def start_timed_effect(self, name: str, duration_ms: int,
+                           on_apply=None, on_expire=None):
+        existing = self.timed_effects.get(name)
+        if existing is not None:
+            # Already active — just push the expiry forward.
+            self.timed_effects[name] = (
+                pygame.time.get_ticks() + duration_ms, existing[1]
+            )
+            return
+        if on_apply is not None:
+            on_apply()
+        self.timed_effects[name] = (
+            pygame.time.get_ticks() + duration_ms,
+            on_expire or (lambda: None),
+        )
+
+    def _tick_timed_effects(self):
+        now = pygame.time.get_ticks()
+        expired = [n for n, (t, _) in self.timed_effects.items() if now >= t]
+        for n in expired:
+            _, on_expire = self.timed_effects.pop(n)
+            on_expire()
 
     def _update_interaction_focus(self):
         # Drop any dead interactables from the set first.
@@ -327,6 +357,7 @@ class PlayState(State):
     def _sprite_interactions(self):
         damage = self.player.weapon.damage if self.player.weapon else 1
         penetration = self.player.weapon.penetration if self.player.weapon else 1
+        mult = self.points_multiplier
         for zombie in self.zombies:
             for bullet in self.bullets:
                 if zombie.rect.colliderect(bullet.hit_box):
@@ -335,9 +366,9 @@ class PlayState(State):
                     zombie.take_damage(damage)
                     if was_alive:
                         if zombie.health <= 0:
-                            self.player.points += POINTS_PER_KILL
+                            self.player.points += int(POINTS_PER_KILL * mult)
                         else:
-                            self.player.points += POINTS_PER_HIT
+                            self.player.points += int(POINTS_PER_HIT * mult)
                     if bullet.hit_count >= penetration:
                         bullet.kill()
             if zombie.hit_box.colliderect(self.player.hit_box):
