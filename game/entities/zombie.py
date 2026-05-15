@@ -5,11 +5,13 @@ import pygame
 
 from settings import (
     TILE_SIZE,
-    ZOMBIE_SPEED,
-    ZOMBIE_HEALTH,
+    ZOMBIE_SPEED_BASE,
+    ZOMBIE_SPEED_RAMP_PER_ROUND,
+    ZOMBIE_MAX_SPEED,
+    ZOMBIE_HEALTH_BASE,
+    ZOMBIE_HEALTH_RAMP_PER_ROUND,
     ZOMBIE_CHASE_DISTANCE,
     MAX_ROTATE_SPEED,
-    ROUND_HEALTH_RAMP_PER_ROUND,
     PICKUP_DROP_CHANCE,
 )
 from game import assets
@@ -37,10 +39,15 @@ class Zombie(pygame.sprite.Sprite):
         self.hit_box = pygame.Rect(0, 0, self.rect.width * 0.7, self.rect.height * 0.7)
         self.hit_box.center = self.rect.center
 
-        round_multiplier = 1 + ROUND_HEALTH_RAMP_PER_ROUND * scene.round_manager.current_round
-        self.speed_base = ZOMBIE_SPEED + ZOMBIE_SPEED * round_multiplier
+        round_num = scene.round_manager.current_round
+        # Speed ramps linearly and caps. Round 1 = base, +RAMP per round.
+        self.speed_base = min(
+            ZOMBIE_MAX_SPEED,
+            ZOMBIE_SPEED_BASE + ZOMBIE_SPEED_RAMP_PER_ROUND * (round_num - 1),
+        )
         self.speed = self.speed_base
-        self.health = ZOMBIE_HEALTH * round_multiplier
+        # Health compounds (doubles every ~4 rounds at 18%).
+        self.health = ZOMBIE_HEALTH_BASE * ((1 + ZOMBIE_HEALTH_RAMP_PER_ROUND) ** (round_num - 1))
 
         self.colliding_with_wall = False
         self.is_chasing = False

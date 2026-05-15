@@ -22,6 +22,7 @@ class App:
         from game.states.play import PlayState
         from game.states.game_over import GameOverState
         from game.states.mapmaking import MapMakingState
+        from game.states.map_maker_landing import MapMakerLandingState
         from game.states.multiplayer_menu import MultiplayerMenuState
         from game.states.host_lobby import HostLobbyState
         from game.states.join_lobby import JoinLobbyState
@@ -33,6 +34,7 @@ class App:
             "play": PlayState,
             "game_over": GameOverState,
             "mapmaking": MapMakingState,
+            "map_maker_landing": MapMakerLandingState,
             "multiplayer_menu": MultiplayerMenuState,
             "host_lobby": HostLobbyState,
             "join_lobby": JoinLobbyState,

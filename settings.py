@@ -22,10 +22,18 @@ BARREL_OFFSET = vector(12, 12)
 STARTING_GRENADES = 4
 
 # Zombie
-ZOMBIE_SPEED = 1.6
-ZOMBIE_HEALTH = 10
+# Round 1 should be a slow stroll (clearly slower than the player) so the
+# player has time to learn the controls. Speed ramps linearly per round
+# until it caps; health ramps multiplicatively so late rounds are tough.
+ZOMBIE_SPEED_BASE = 1.2           # round 1 walking speed (player runs at 5)
+ZOMBIE_SPEED_RAMP_PER_ROUND = 0.15
+ZOMBIE_MAX_SPEED = 3.5            # speed cap
+ZOMBIE_HEALTH_BASE = 5            # 5 pistol shots to kill on round 1
+ZOMBIE_HEALTH_RAMP_PER_ROUND = 0.18  # 18% compounding per round
+# Legacy names kept so variant subclasses keep working without churn.
+ZOMBIE_SPEED = ZOMBIE_SPEED_BASE
+ZOMBIE_HEALTH = ZOMBIE_HEALTH_BASE
 ZOMBIE_CHASE_DISTANCE = 300
-ZOMBIE_MAX_SPEED = 2.8
 MAX_ROTATE_SPEED = 5
 MAX_ZOMBIES = 100
 

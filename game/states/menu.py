@@ -54,7 +54,7 @@ class MenuState(State):
         elif action == "multiplayer":
             self.app.switch("multiplayer_menu")
         elif action == "mapmaker":
-            self.app.switch("mapmaking")
+            self.app.switch("map_maker_landing")
         elif action == "controls":
             self.show_controls = True
         elif action == "quit":

@@ -25,6 +25,7 @@ def _tinted_sprite(tint: tuple[int, int, int], scale_factor: float = 1.0) -> pyg
 class Crawler(Zombie):
     """Slow but tougher per HP. Half-sized."""
     _SPEED_MULT = 0.5
+    _SPEED_MAX = 2.0
     _HEALTH_MULT = 1.5
     _SCALE = 0.6
     _TINT = (180, 220, 80)
@@ -36,7 +37,7 @@ class Crawler(Zombie):
         self.rect = self.image.get_rect(center=(x, y))
         self.hit_box = pygame.Rect(0, 0, self.rect.width * 0.7, self.rect.height * 0.7)
         self.hit_box.center = self.rect.center
-        self.speed_base *= self._SPEED_MULT
+        self.speed_base = min(self._SPEED_MAX, self.speed_base * self._SPEED_MULT)
         self.speed = self.speed_base
         self.health *= self._HEALTH_MULT
 
@@ -44,6 +45,7 @@ class Crawler(Zombie):
 class Runner(Zombie):
     """Fast, lower HP. Normal size, red-tinted."""
     _SPEED_MULT = 1.6
+    _SPEED_MAX = 4.5     # just below player speed (5)
     _HEALTH_MULT = 0.7
     _TINT = (255, 90, 60)
 
@@ -51,7 +53,7 @@ class Runner(Zombie):
         super().__init__(scene, x, y)
         self.original_image = _tinted_sprite(self._TINT)
         self.image = self.original_image.copy()
-        self.speed_base *= self._SPEED_MULT
+        self.speed_base = min(self._SPEED_MAX, self.speed_base * self._SPEED_MULT)
         self.speed = self.speed_base
         self.health *= self._HEALTH_MULT
 
@@ -59,6 +61,7 @@ class Runner(Zombie):
 class Hellhound(Zombie):
     """Sprints in straight lines at the player. Very fast, glass cannon."""
     _SPEED_MULT = 2.2
+    _SPEED_MAX = 5.5     # can catch up to a still player; barely outruns walker
     _HEALTH_MULT = 0.5
     _SCALE = 0.7
     _TINT = (40, 0, 90)
@@ -70,7 +73,7 @@ class Hellhound(Zombie):
         self.rect = self.image.get_rect(center=(x, y))
         self.hit_box = pygame.Rect(0, 0, self.rect.width * 0.7, self.rect.height * 0.7)
         self.hit_box.center = self.rect.center
-        self.speed_base *= self._SPEED_MULT
+        self.speed_base = min(self._SPEED_MAX, self.speed_base * self._SPEED_MULT)
         self.speed = self.speed_base
         self.health *= self._HEALTH_MULT
 

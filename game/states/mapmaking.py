@@ -25,7 +25,7 @@ vector = pygame.math.Vector2
 
 
 class MapMakingState(State):
-    def on_enter(self, **kwargs):
+    def on_enter(self, *, editing: str | None = None, **kwargs):
         self.toolbar = MapMakerToolbar(self.surface)
         self.offset = vector(0, 0)
         self.scroll_speed = 5
@@ -36,9 +36,35 @@ class MapMakingState(State):
         self.grid: list[list[int]] = []
         self.item_number = self.toolbar.pop_up_menu.item_number
         self._tk_root = None
+        # When editing an existing map, save defaults to overwriting it
+        # without prompting (Save) and we also keep its metadata.
+        self.editing_filename: str | None = editing
+        self.door_costs: dict = {}
+        self.wall_buy_weapons: dict = {}
+        self.perk_machine_perks: dict = {}
 
-        self._select_background_and_size()
-        self._create_outer_wall()
+        if editing:
+            self._load_existing(editing)
+        else:
+            self._select_background_and_size()
+            self._create_outer_wall()
+
+    def _load_existing(self, filename: str):
+        data = map_loader.load(f"maps/{filename}")
+        self.grid = data["grid"]
+        self.background_image_path = data["background_image_path"]
+        self.door_costs = dict(data.get("door_costs") or {})
+        self.wall_buy_weapons = dict(data.get("wall_buy_weapons") or {})
+        self.perk_machine_perks = dict(data.get("perk_machine_perks") or {})
+        if self.background_image_path and os.path.isfile(self.background_image_path):
+            self.background_image = pygame.image.load(self.background_image_path).convert()
+            self.map_width = self.background_image.get_width()
+            self.map_height = self.background_image.get_height()
+        else:
+            # No background image — sizes derive from the grid itself.
+            self.background_image = None
+            self.map_width = len(self.grid[0]) * TILE_SIZE if self.grid else SCREEN_WIDTH
+            self.map_height = len(self.grid) * TILE_SIZE if self.grid else SCREEN_HEIGHT
 
     def _select_background_and_size(self):
         self._tk_root = tk.Tk()
@@ -108,14 +134,29 @@ class MapMakingState(State):
         self.grid[gy][gx] = value
 
     def _save_map(self):
+        # When editing an existing map, default to overwriting it without
+        # prompting (the user already chose this map). Pre-fill the dialog
+        # with the existing name when prompting.
+        default_name = self.editing_filename[:-4] if self.editing_filename else ""
         self._tk_root = tk.Tk()
         self._tk_root.withdraw()
-        name = simpledialog.askstring("Input", "Please enter the map name:")
+        name = simpledialog.askstring(
+            "Save map", "Map name:", initialvalue=default_name,
+        )
         self._tk_root.destroy()
         self._tk_root = None
         if not name:
             return
-        map_loader.save(self.grid, self.background_image_path, name)
+        map_loader.save(
+            self.grid,
+            self.background_image_path,
+            name,
+            door_costs=self.door_costs,
+            wall_buy_weapons=self.wall_buy_weapons,
+            perk_machine_perks=self.perk_machine_perks,
+        )
+        # Now editing the saved file (so a subsequent Save defaults to it).
+        self.editing_filename = f"{name}.pkl"
 
     def _open_map(self):
         self._tk_root = tk.Tk()
@@ -129,9 +170,19 @@ class MapMakingState(State):
         self._tk_root = None
         if not path:
             return
-        with open(path, "rb") as f:
-            data = pickle.load(f)
-        self.grid = data["grid"] if isinstance(data, dict) else data
+        # Use map_loader so we get all the metadata too.
+        data = map_loader.load(path)
+        self.grid = data["grid"]
+        self.door_costs = dict(data.get("door_costs") or {})
+        self.wall_buy_weapons = dict(data.get("wall_buy_weapons") or {})
+        self.perk_machine_perks = dict(data.get("perk_machine_perks") or {})
+        bg = data.get("background_image_path")
+        if bg and os.path.isfile(bg):
+            self.background_image_path = bg
+            self.background_image = pygame.image.load(bg).convert()
+            self.map_width = self.background_image.get_width()
+            self.map_height = self.background_image.get_height()
+        self.editing_filename = os.path.basename(path)
 
     def update(self):
         self._scroll_camera()
