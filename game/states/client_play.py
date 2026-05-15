@@ -35,8 +35,13 @@ class ClientPlayState(State):
         self.map_height = len(grid) * TILE_SIZE
         self.camera = Camera(self.map_width, self.map_height)
 
-        if background and os.path.isfile(background):
-            self.background_image = pygame.image.load(background).convert()
+        # Background path may be a path that exists on the host but not on
+        # this PC. Fall back to assets/images/<basename> the same way the
+        # map_loader does for offline loads.
+        from game.world.map_loader import _resolve_bg_path
+        resolved = _resolve_bg_path(background)
+        if resolved:
+            self.background_image = pygame.image.load(resolved).convert()
         else:
             self.background_image = None
 

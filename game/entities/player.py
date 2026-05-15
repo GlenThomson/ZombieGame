@@ -100,7 +100,10 @@ class Player(pygame.sprite.Sprite):
         # Crawl toward bleed-out; PlayState handles teammate revives by
         # pumping `revive_progress_ms`. A revived player snaps back up.
         if pygame.time.get_ticks() >= self.bleed_out_at_ms:
-            self.health = -1  # PlayState picks this up as final death
+            # No longer crawling — fully dead. Both fields must change so
+            # is_dead() (which gates is_down=False AND health<=0) trips.
+            self.is_down = False
+            self.health = 0
 
     def go_down(self):
         from settings import PLAYER_BLEED_OUT_MS
