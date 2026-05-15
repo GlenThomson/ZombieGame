@@ -58,6 +58,11 @@ class Pickup(pygame.sprite.Sprite):
             self.image.set_alpha(255 if self.visible else 0)
             self.next_flicker_at = now + self.flicker_period_ms
 
-        if pygame.sprite.collide_rect(self, self.scene.player):
-            effects.apply(self.kind, self.scene)
-            self.kill()
+        # Any standing player walking over a pickup collects it for everyone.
+        for player in self.scene.players:
+            if player.is_dead() or player.is_down:
+                continue
+            if pygame.sprite.collide_rect(self, player):
+                effects.apply(self.kind, self.scene, collector=player)
+                self.kill()
+                return

@@ -130,43 +130,38 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
             scene.player.inventory.cycle()
 
         # Tier 1: forcibly interact with each kind of interactable on its
-        # own dedicated frame so we exercise every code path.
+        # own dedicated frame so we exercise every code path. We bypass the
+        # proximity-based focus search and call .interact() directly.
         if frame == 100 and scene.doors:
             door = next(iter(scene.doors))
             scene.player.points = 99999
-            scene.focused_interactable = door
-            scene._fire_interaction()
+            door.interact(scene.local_player)
             saw_door_opened = door not in scene.doors
         if frame == 110 and scene.wall_buys:
             wb = next(iter(scene.wall_buys))
             scene.player.points = 99999
-            scene.focused_interactable = wb
-            scene._fire_interaction()  # buy
-            scene._fire_interaction()  # refill
+            wb.interact(scene.local_player)  # buy
+            wb.interact(scene.local_player)  # refill
             saw_wall_buy_used = True
         if frame == 115 and scene.perk_machines:
             pm = next(iter(scene.perk_machines))
             scene.player.points = 99999
-            scene.focused_interactable = pm
-            scene._fire_interaction()
+            pm.interact(scene.local_player)
             saw_perk_bought = scene.perk_system.has(pm.perk.name) and \
                 scene.player.max_health > starting_max_health
         if frame == 130 and scene.mystery_boxes:
             mb = next(iter(scene.mystery_boxes))
             scene.player.points = 99999
-            scene.focused_interactable = mb
-            scene._fire_interaction()  # start spinning
-            # Force the spin to complete
+            mb.interact(scene.local_player)  # start spinning
             mb.spin_started_at = pygame.time.get_ticks() - 99999
             mb.update()
-            scene._fire_interaction()  # take weapon
+            mb.interact(scene.local_player)  # take weapon
             inv_now = {s.name for s in scene.player.inventory.slots if s is not None}
             saw_mystery_box_used = bool(inv_now - {"Pistol"})
         if frame == 140 and scene.pack_a_punch_machines:
             pap = next(iter(scene.pack_a_punch_machines))
             scene.player.points = 99999
-            scene.focused_interactable = pap
-            scene._fire_interaction()
+            pap.interact(scene.local_player)
             saw_pap_used = scene.player.weapon is not None and scene.player.weapon.is_packed
         if frame == 120 and starting_windows:
             win = starting_windows[0]

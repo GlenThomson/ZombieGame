@@ -37,15 +37,17 @@ class PerkMachine(pygame.sprite.Sprite):
         return (self.rect.centerx, self.rect.centery)
 
     def get_prompt(self, player) -> str | None:
-        if self.scene.perk_system is None:
+        ps = self.scene.perk_system_by_player.get(player.player_id)
+        if ps is None:
             return None
-        if self.scene.perk_system.has(self.perk.name):
+        if ps.has(self.perk.name):
             return f"{self.perk.name} (owned)"
         affordable = player.points >= self.perk.cost
         prefix = "" if affordable else "(need points) "
         return f"{prefix}[{INTERACT_KEY_LABEL}] {self.perk.name}  -  {self.perk.cost}"
 
     def interact(self, player) -> None:
-        if self.scene.perk_system is None:
+        ps = self.scene.perk_system_by_player.get(player.player_id)
+        if ps is None:
             return
-        self.scene.perk_system.buy(self.perk.name)
+        ps.buy(self.perk.name)

@@ -19,8 +19,9 @@ HELLHOUND_ROUND_INTERVAL = 5  # every 5th round is a dogs round
 
 
 class RoundManager:
-    def __init__(self, scene, starting_round: int = 1):
+    def __init__(self, scene, starting_round: int = 1, player_count: int = 1):
         self.scene = scene
+        self.player_count = max(1, player_count)
         self.current_round = starting_round
         self.spawn_window_seconds = ROUND_SPAWN_WINDOW_SECONDS
         self.zombies_to_spawn = self._target_zombie_count(starting_round)
@@ -34,9 +35,11 @@ class RoundManager:
         return r > 0 and r % HELLHOUND_ROUND_INTERVAL == 0
 
     def _target_zombie_count(self, round_num: int) -> int:
+        # CoD scales zombie count up by player count, roughly +50% per extra.
+        scale = 1.0 + 0.5 * (self.player_count - 1)
         if self.is_hellhound_round(round_num):
-            return max(6, round_num * 2)
-        return ZOMBIES_PER_ROUND_MULTIPLIER * round_num
+            return max(6, int(round_num * 2 * scale))
+        return int(ZOMBIES_PER_ROUND_MULTIPLIER * round_num * scale)
 
     def tick(self, dt_seconds: float):
         if self.zombies_to_spawn > 0:

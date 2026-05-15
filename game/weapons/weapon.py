@@ -113,12 +113,14 @@ class Weapon:
 
     def _fire_bullet(self):
         scene = self.owner.scene
-        cam = scene.camera.camera
-        mx, my = adjusted_mouse_position(cam.x, cam.y)
-        dx, dy = mx - self.owner.rect.centerx, my - self.owner.rect.centery
-        if dx == 0 and dy == 0:
-            return
-        direction = vector(dx, dy).normalize()
+        # Direction comes from the player's aim angle (kept by Player from its
+        # input source — same logic for local + remote players, no camera math
+        # here so this works regardless of whose camera we are).
+        import math
+        rad = math.radians(self.owner.angle)
+        dx = math.cos(rad)
+        dy = -math.sin(rad)  # screen-y is inverted relative to math sin
+        direction = vector(dx, dy)
         Bullet(
             scene,
             self.owner.rect.centerx,
@@ -127,4 +129,7 @@ class Weapon:
             self.owner.angle,
             self.definition.bullet_spread,
             self.definition.bullet_speed,
+            shooter_id=self.owner.player_id,
+            damage=self.damage,
+            penetration=self.penetration,
         )

@@ -35,24 +35,24 @@ def icon_for(name: str) -> tuple[str, tuple[int, int, int]] | None:
     return _ICONS.get(name)
 
 
-def apply(name: str, scene):
+def apply(name: str, scene, collector=None):
     handler = _REGISTRY.get(name)
     if handler is None:
         return
-    handler(scene)
+    handler(scene, collector)
 
 
 # ---------------- effect implementations ----------------
 
 @effect("instant_kill", weight=1.0, icon=("IK", (220, 30, 30)))
-def _instant_kill(scene):
+def _instant_kill(scene, collector=None):
     assets.sound("instant_kill.mp3").play()
     for zombie in scene.zombies:
         zombie.health = 1
 
 
 @effect("nuke_pickup", weight=2.0, icon=("NK", (60, 60, 80)))
-def _nuke(scene):
+def _nuke(scene, collector=None):
     assets.sound("kaboom.mp3").play()
     assets.sound("nuke_sound.mp3").play()
     for zombie in scene.zombies:
@@ -60,27 +60,28 @@ def _nuke(scene):
 
 
 @effect("max_ammo", weight=1.5, icon=("MA", (220, 200, 30)))
-def _max_ammo(scene):
+def _max_ammo(scene, collector=None):
     assets.sound("end_round_sound.mp3").play()
-    for slot in scene.player.inventory.slots:
-        if slot is None:
-            continue
-        slot.current_ammo = slot.magazine_size
-        slot.is_reloading = False
+    # All players' weapons refill (CoD: max-ammo helps the whole team).
+    for player in scene.players:
+        for slot in player.inventory.slots:
+            if slot is None:
+                continue
+            slot.current_ammo = slot.magazine_size
+            slot.is_reloading = False
 
 
 @effect("double_points", weight=1.0, icon=("2X", (30, 200, 30)))
-def _double_points(scene):
-    # Stamps a temporary modifier on the player; PlayState reads
-    # POINTS_PER_HIT/KILL via this multiplier. The effect lasts 30 seconds —
-    # set up via PlayState.timed_effects (see PlayState).
-    scene.start_timed_effect("double_points", duration_ms=30_000,
-                              on_apply=lambda: setattr(scene, "points_multiplier", 2.0),
-                              on_expire=lambda: setattr(scene, "points_multiplier", 1.0))
+def _double_points(scene, collector=None):
+    scene.start_timed_effect(
+        "double_points", duration_ms=30_000,
+        on_apply=lambda: setattr(scene, "points_multiplier", 2.0),
+        on_expire=lambda: setattr(scene, "points_multiplier", 1.0),
+    )
 
 
 @effect("carpenter", weight=1.0, icon=("CP", (140, 100, 50)))
-def _carpenter(scene):
+def _carpenter(scene, collector=None):
     from settings import WINDOW_PLANK_COUNT
     repaired_anything = False
     for window in list(scene.windows):
@@ -88,5 +89,5 @@ def _carpenter(scene):
             window.planks = WINDOW_PLANK_COUNT
             window._render()
             repaired_anything = True
-    if repaired_anything:
-        scene.player.points += 200
+    if repaired_anything and collector is not None:
+        collector.points += 200

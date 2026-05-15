@@ -1,5 +1,11 @@
 """The actual game scene. Owns the entity sprite groups, camera, round
-manager, and HUD. Doubles as the 'scene' object the entities reach into."""
+manager, and HUD. Doubles as the 'scene' object the entities reach into.
+
+Multi-player ready: holds a list of Player instances. The "local" player
+(the one whose camera + HUD we render) is identified by `local_player_id`.
+On a single-player game there's just one player and `local_player_id == 0`.
+"""
+import math
 import random
 import pygame
 
@@ -14,12 +20,17 @@ from settings import (
     DOOR_DEFAULT_COST,
     WALL_BUY_DEFAULT_WEAPON,
     PERK_MACHINE_DEFAULT_PERK,
+    MAX_PLAYERS,
+    PLAYER_TINTS,
+    REVIVE_HOLD_MS,
+    REVIVE_RANGE_PX,
 )
 from game import assets
 from game.camera import Camera
 from game.states.base import State
 from game.systems.round_manager import RoundManager
 from game.systems.interaction import find_focused
+from game.systems.input import LocalInputSource, RemoteInputSource
 from game.entities.player import Player
 from game.entities.wall import Wall, BarbWire, ZombieSpawn
 from game.entities.door import Door
@@ -35,7 +46,12 @@ from game.ui.hud import HUD
 
 class PlayState(State):
     def on_enter(self, *, grid, background=None, door_costs=None,
-                 wall_buy_weapons=None, perk_machine_perks=None, **kwargs):
+                 wall_buy_weapons=None, perk_machine_perks=None,
+                 player_count: int = 1,
+                 local_player_id: int = 0,
+                 remote_input_sources: dict | None = None,
+                 player_names: list[str] | None = None,
+                 **kwargs):
         # Sprite groups
         self.all_sprites = pygame.sprite.Group()
         self.bullets = pygame.sprite.Group()
@@ -64,24 +80,54 @@ class PlayState(State):
         self.wall_buy_weapons = dict(wall_buy_weapons or {})
         self.perk_machine_perks = dict(perk_machine_perks or {})
 
-        # Timed effects (e.g. Double Points). Each entry: name → (expire_ms, on_expire).
         self.timed_effects: dict[str, tuple[int, callable]] = {}
         self.points_multiplier = 1.0
-        self.damage_flash_alpha = 0  # red overlay alpha, decays each frame
+        self.damage_flash_alpha = 0
 
-        # Camera + map dimensions need to exist before Player so Player can
-        # call camera-relative helpers in __init__.
+        # Map dimensions + camera (camera follows the local player or midpoint).
         self.map_width = len(grid[0]) * TILE_SIZE
         self.map_height = len(grid) * TILE_SIZE
         self.camera = Camera(self.map_width, self.map_height)
 
-        self.round_manager = RoundManager(self, starting_round=1)
-        self.player = Player(self, 20 * TILE_SIZE, 20 * TILE_SIZE)
-        self.perk_system = PerkSystem(self.player)
+        # ---- Players ----
+        player_count = max(1, min(MAX_PLAYERS, player_count))
+        self.local_player_id = local_player_id
+        names = player_names or [f"Player{i + 1}" for i in range(player_count)]
+        self.players: list[Player] = []
+        remote_input_sources = remote_input_sources or {}
+
+        def _world_mouse():
+            mx, my = pygame.mouse.get_pos()
+            return (mx - self.camera.camera.x, my - self.camera.camera.y)
+
+        for i in range(player_count):
+            input_source = remote_input_sources.get(i)
+            if input_source is None and i == local_player_id:
+                input_source = LocalInputSource(world_mouse_provider=_world_mouse)
+            elif input_source is None:
+                input_source = RemoteInputSource()
+            tint = PLAYER_TINTS[i % len(PLAYER_TINTS)] if i > 0 else None
+            p = Player(
+                self, 20 * TILE_SIZE, 20 * TILE_SIZE,
+                player_id=i,
+                name=names[i] if i < len(names) else f"Player{i + 1}",
+                input_source=input_source,
+                tint=tint,
+            )
+            self.players.append(p)
+
+        self.perk_system_by_player = {p.player_id: PerkSystem(p) for p in self.players}
+
+        # Round manager spawn-scaling depends on player count.
+        self.round_manager = RoundManager(self, starting_round=1, player_count=player_count)
 
         self._populate_from_grid(grid)
         self._ensure_spawns_exist()
         self._auto_seed_tier1_tiles_if_missing()
+
+        # Spread spawn positions slightly so multiple players don't sit on
+        # the same tile if the map only has one player_spawn.
+        self._spread_initial_player_positions()
 
         if background:
             self.background_image = pygame.image.load(background).convert()
@@ -90,6 +136,37 @@ class PlayState(State):
 
         self.hud = HUD()
         self.round_text_font = pygame.font.Font(None, 100)
+
+    # ---- backwards-compat alias for code that pre-dates multi-player ----
+
+    @property
+    def player(self) -> Player:
+        return self.local_player
+
+    @property
+    def local_player(self) -> Player:
+        for p in self.players:
+            if p.player_id == self.local_player_id:
+                return p
+        return self.players[0]
+
+    @property
+    def perk_system(self) -> PerkSystem:
+        # HUD reads scene.perk_system for the local player.
+        return self.perk_system_by_player[self.local_player.player_id]
+
+    def alive_players(self) -> list[Player]:
+        return [p for p in self.players if not p.is_dead()]
+
+    def standing_players(self) -> list[Player]:
+        return [p for p in self.alive_players() if not p.is_down]
+
+    def nearest_player_to(self, pos) -> Player | None:
+        targets = self.standing_players() or self.alive_players()
+        if not targets:
+            return None
+        ax, ay = (pos.x, pos.y) if hasattr(pos, "x") else pos[:2]
+        return min(targets, key=lambda p: (p.pos.x - ax) ** 2 + (p.pos.y - ay) ** 2)
 
     # ----- map population -----
 
@@ -104,15 +181,16 @@ class PlayState(State):
                 elif tile == TileType.ZOMBIE_SPAWN:
                     self.zombie_spawns.append(ZombieSpawn(col, row))
                 elif tile == TileType.PLAYER_SPAWN:
-                    self.player.pos.x = col * TILE_SIZE
-                    self.player.pos.y = row * TILE_SIZE
+                    for p in self.players:
+                        p.pos.x = col * TILE_SIZE
+                        p.pos.y = row * TILE_SIZE
                     player_spawn_set = True
                 elif tile == TileType.DOOR_CLOSED:
                     cost = self.door_costs.get((col, row), DOOR_DEFAULT_COST)
                     door = Door(self, col, row, cost)
                     self.interactables.add(door)
                 elif tile == TileType.DOOR_OPEN:
-                    pass  # Already passable.
+                    pass
                 elif tile == TileType.WALL_BUY:
                     weapon = self.wall_buy_weapons.get((col, row), WALL_BUY_DEFAULT_WEAPON)
                     wb = WallBuy(self, col, row, weapon)
@@ -132,6 +210,17 @@ class PlayState(State):
                     self.interactables.add(pap)
         self._player_spawn_set = player_spawn_set
 
+    def _spread_initial_player_positions(self):
+        """When multiple players share a player_spawn tile, fan them out."""
+        if len(self.players) <= 1:
+            return
+        cx, cy = self.players[0].pos.x, self.players[0].pos.y
+        spread = TILE_SIZE * 1.2
+        for i, p in enumerate(self.players[1:], start=1):
+            angle = (i / max(1, len(self.players) - 1)) * 2 * math.pi
+            p.pos.x = cx + math.cos(angle) * spread
+            p.pos.y = cy + math.sin(angle) * spread
+
     def _ensure_spawns_exist(self):
         if not self._player_spawn_set:
             self._auto_place_player()
@@ -149,8 +238,9 @@ class PlayState(State):
                         continue
                     y, x = cy + dy, cx + dx
                     if 0 <= y < rows and 0 <= x < cols and self.grid[y][x] == TileType.EMPTY:
-                        self.player.pos.x = x * TILE_SIZE
-                        self.player.pos.y = y * TILE_SIZE
+                        for p in self.players:
+                            p.pos.x = x * TILE_SIZE
+                            p.pos.y = y * TILE_SIZE
                         return
 
     def _auto_place_zombie_spawns(self):
@@ -166,8 +256,8 @@ class PlayState(State):
                 if self.grid[y][x] == TileType.EMPTY:
                     candidates.append((x, y))
         if not candidates:
-            px = self.player.pos.x / TILE_SIZE
-            py = self.player.pos.y / TILE_SIZE
+            px = self.local_player.pos.x / TILE_SIZE
+            py = self.local_player.pos.y / TILE_SIZE
             candidates = [
                 (x, y)
                 for y in range(rows)
@@ -190,8 +280,8 @@ class PlayState(State):
     def _first_empty_tile_far_from_player(self) -> tuple[int, int] | None:
         rows = len(self.grid)
         cols = len(self.grid[0])
-        px = self.player.pos.x / TILE_SIZE
-        py = self.player.pos.y / TILE_SIZE
+        px = self.local_player.pos.x / TILE_SIZE
+        py = self.local_player.pos.y / TILE_SIZE
         best = None
         best_d2 = 0
         for y in range(rows):
@@ -205,9 +295,6 @@ class PlayState(State):
         return best
 
     def _auto_seed_tier1_tiles_if_missing(self):
-        """If the loaded map has no doors / wall buys / windows yet, drop one
-        of each in plausible spots so Tier 1 mechanics can be tried out
-        without needing the map maker. Runtime-only — doesn't modify the .pkl."""
         has_door = any(d for d in self.doors)
         has_wall_buy = any(w for w in self.wall_buys)
         has_window = any(w for w in self.windows)
@@ -217,8 +304,6 @@ class PlayState(State):
         if has_door and has_wall_buy and has_window and has_perk and has_box and has_pap:
             return
 
-        # Find candidate tiles: walls adjacent to empty tiles work for doors
-        # and wall buys; perimeter walls work for windows.
         rows = len(self.grid)
         cols = len(self.grid[0])
         wall_with_empty_neighbour = []
@@ -235,9 +320,8 @@ class PlayState(State):
         if not wall_with_empty_neighbour:
             return
 
-        # Distance from player so seeded tiles aren't all in the same corner.
-        px = self.player.pos.x / TILE_SIZE
-        py = self.player.pos.y / TILE_SIZE
+        px = self.local_player.pos.x / TILE_SIZE
+        py = self.local_player.pos.y / TILE_SIZE
         wall_with_empty_neighbour.sort(
             key=lambda p: -((p[0] - px) ** 2 + (p[1] - py) ** 2) ** 0.5
         )
@@ -264,8 +348,6 @@ class PlayState(State):
         if not has_window:
             spot = take_one()
             if spot is None:
-                # Sparse maps may run out of wall-adjacent candidates. Windows
-                # can sit on any empty tile — fall back to that.
                 spot = self._first_empty_tile_far_from_player()
                 if spot is not None:
                     self.grid[spot[1]][spot[0]] = TileType.WINDOW
@@ -305,38 +387,68 @@ class PlayState(State):
             if event.key == pygame.K_ESCAPE:
                 self.app.switch("menu")
                 return
-            if event.key == pygame.K_g:
-                self.player.throw_grenade()
-            elif event.key == pygame.K_r:
-                self.player.weapon.reload()
-            elif event.key == pygame.K_f:
-                self._fire_interaction()
-            elif pygame.K_1 <= event.key <= pygame.K_4:
-                self.player.inventory.equip(event.key - pygame.K_1)
+            mapping = {
+                pygame.K_g: "grenade",
+                pygame.K_r: "reload",
+                pygame.K_f: "interact",
+                pygame.K_1: "switch:0",
+                pygame.K_2: "switch:1",
+                pygame.K_3: "switch:2",
+                pygame.K_4: "switch:3",
+            }
+            ev_name = mapping.get(event.key)
+            if ev_name is None:
+                return
+            src = self.local_player.input_source
+            if hasattr(src, "push_event"):
+                src.push_event(ev_name)
 
-    def _fire_interaction(self):
-        if self.focused_interactable is None:
+    def _fire_interaction_for(self, player: Player):
+        focused = self._find_focused_for(player)
+        if focused is None:
             return
-        self.focused_interactable.interact(self.player)
-        # The interactable may have removed itself; refresh on next frame anyway.
+        focused.interact(player)
+
+    def _find_focused_for(self, player: Player):
+        return find_focused(
+            (player.rect.centerx, player.rect.centery),
+            self.interactables,
+            INTERACT_RANGE_PX,
+        )
 
     def update(self):
-        if self.player.is_dead():
-            self.app.switch("game_over", final_round=self.round_manager.current_round,
-                            final_kills=self.kill_count)
+        # End-of-game: all players dead.
+        if not self.alive_players():
+            local = self.local_player
+            self.app.switch(
+                "game_over",
+                final_round=self.round_manager.current_round,
+                final_kills=self.kill_count,
+            )
             return
-
-        if pygame.mouse.get_pressed()[0]:
-            self.player.shoot()
 
         dt_ms = self.app.clock.get_time()
         dt_s = dt_ms / 1000.0
 
-        self.camera.update(self.player)
+        # Camera follows midpoint of standing players (or alive if all down).
+        followed = self.standing_players() or self.alive_players() or [self.local_player]
+        avg_x = sum(p.pos.x for p in followed) / len(followed)
+        avg_y = sum(p.pos.y for p in followed) / len(followed)
+
+        class _CamTarget:
+            rect = pygame.Rect(int(avg_x), int(avg_y), 1, 1)
+        self.camera.update(_CamTarget)
+
         self.bullets.update()
         self.pickups.update()
-        self.zombies.update((self.player.pos.x, self.player.pos.y))
-        self.player.update()
+        self.zombies.update(self)
+        for p in self.players:
+            snap = p.input_source.snapshot()
+            # Scene-level routing of interact (Player ignores "interact").
+            for ev in snap.events:
+                if ev == "interact":
+                    self._fire_interaction_for(p)
+            p.update(snap)
         self.blood_splatters.update()
         self.grenades.update()
         self.muzzle_flashes.update()
@@ -345,13 +457,109 @@ class PlayState(State):
             window.update_against_zombies()
         for box in list(self.mystery_boxes):
             box.update()
+
         if self.damage_flash_alpha > 0:
             self.damage_flash_alpha = max(0, self.damage_flash_alpha - 14)
 
         self._sprite_interactions()
-        self._update_interaction_focus()
+        self._handle_revives()
+        self._update_interaction_focus_for_local()
         self._tick_timed_effects()
         self.round_manager.tick(dt_s)
+
+    def _handle_revives(self):
+        # Any standing player adjacent to a downed player who's holding F
+        # contributes time toward that player's revive_progress_ms.
+        if len(self.players) <= 1:
+            return
+        downed = [p for p in self.players if p.is_down]
+        if not downed:
+            return
+        dt = self.app.clock.get_time()
+        for downed_p in downed:
+            advanced = False
+            for reviver in self.players:
+                if reviver is downed_p or reviver.is_down or reviver.is_dead():
+                    continue
+                d2 = (downed_p.pos.x - reviver.pos.x) ** 2 + (downed_p.pos.y - reviver.pos.y) ** 2
+                if d2 > REVIVE_RANGE_PX ** 2:
+                    continue
+                # Was F held in the most recent input snapshot? Both Local and
+                # Remote sources keep `latest` (Remote) or repopulate via
+                # snapshot() — this is checked once per frame for the reviver.
+                src = reviver.input_source
+                latest = getattr(src, "latest", None)
+                if latest is not None:
+                    holding = pygame.K_f in latest.keys
+                else:
+                    # Local: peek at the held keys without disturbing events.
+                    holding = pygame.key.get_pressed()[pygame.K_f]
+                if holding:
+                    downed_p.revive_progress_ms += dt
+                    advanced = True
+                    break
+            if not advanced and downed_p.revive_progress_ms > 0:
+                # Decay if no one is helping (avoids resuming a stale revive).
+                downed_p.revive_progress_ms = max(0, downed_p.revive_progress_ms - dt // 2)
+            if downed_p.revive_progress_ms >= REVIVE_HOLD_MS:
+                downed_p.revive()
+
+    def _update_interaction_focus_for_local(self):
+        self.interactables = {it for it in self.interactables if getattr(it, "alive", lambda: True)()}
+        focused = self._find_focused_for(self.local_player)
+        self.focused_interactable = focused
+        self.interaction_prompt = focused.get_prompt(self.local_player) if focused else None
+
+    def _sprite_interactions(self):
+        from game.entities.effects import FloatingText
+        mult = self.points_multiplier
+        # Bullets only collide with zombies — friendly fire is implicitly off.
+        for zombie in self.zombies:
+            for bullet in self.bullets:
+                if zombie.rect.colliderect(bullet.hit_box):
+                    bullet.hit_count += 1
+                    was_alive = zombie.health > 0
+                    zombie.take_damage(bullet.damage)
+                    shooter = self._player_by_id(bullet.shooter_id)
+                    if was_alive and shooter is not None:
+                        if zombie.health <= 0:
+                            pts = int(POINTS_PER_KILL * mult)
+                            shooter.points += pts
+                            FloatingText(self, zombie.pos, f"+{pts}", color=(255, 215, 0))
+                        else:
+                            pts = int(POINTS_PER_HIT * mult)
+                            shooter.points += pts
+                    if bullet.hit_count >= bullet.penetration:
+                        bullet.kill()
+
+            # Each player can take damage from any zombie touching them.
+            for player in self.players:
+                if player.is_down or player.is_dead():
+                    continue
+                if zombie.hit_box.colliderect(player.hit_box):
+                    zombie.speed = zombie.speed_base * 0.1
+                    player.take_damage()
+                    if player is self.local_player:
+                        self.damage_flash_alpha = min(180, self.damage_flash_alpha + 60)
+                    if player.health <= 0 and not player.is_down:
+                        # If there's anyone left to revive, go down. Else die.
+                        any_standing_others = any(
+                            p is not player and not p.is_down and not p.is_dead()
+                            for p in self.players
+                        )
+                        if any_standing_others:
+                            player.go_down()
+                        # else: leave health <= 0 → is_dead() → game over check
+                else:
+                    zombie.speed = zombie.speed_base
+
+    def _player_by_id(self, player_id: int | None) -> Player | None:
+        if player_id is None:
+            return None
+        for p in self.players:
+            if p.player_id == player_id:
+                return p
+        return None
 
     # ---- timed effects (Double Points etc.) ----
 
@@ -359,7 +567,6 @@ class PlayState(State):
                            on_apply=None, on_expire=None):
         existing = self.timed_effects.get(name)
         if existing is not None:
-            # Already active — just push the expiry forward.
             self.timed_effects[name] = (
                 pygame.time.get_ticks() + duration_ms, existing[1]
             )
@@ -378,44 +585,7 @@ class PlayState(State):
             _, on_expire = self.timed_effects.pop(n)
             on_expire()
 
-    def _update_interaction_focus(self):
-        # Drop any dead interactables from the set first.
-        self.interactables = {it for it in self.interactables if getattr(it, "alive", lambda: True)()}
-        focused = find_focused(
-            (self.player.rect.centerx, self.player.rect.centery),
-            self.interactables,
-            INTERACT_RANGE_PX,
-        )
-        self.focused_interactable = focused
-        self.interaction_prompt = focused.get_prompt(self.player) if focused else None
-
-    def _sprite_interactions(self):
-        from game.entities.effects import FloatingText
-        damage = self.player.weapon.damage if self.player.weapon else 1
-        penetration = self.player.weapon.penetration if self.player.weapon else 1
-        mult = self.points_multiplier
-        for zombie in self.zombies:
-            for bullet in self.bullets:
-                if zombie.rect.colliderect(bullet.hit_box):
-                    bullet.hit_count += 1
-                    was_alive = zombie.health > 0
-                    zombie.take_damage(damage)
-                    if was_alive:
-                        if zombie.health <= 0:
-                            pts = int(POINTS_PER_KILL * mult)
-                            self.player.points += pts
-                            FloatingText(self, zombie.pos, f"+{pts}", color=(255, 215, 0))
-                        else:
-                            pts = int(POINTS_PER_HIT * mult)
-                            self.player.points += pts
-                    if bullet.hit_count >= penetration:
-                        bullet.kill()
-            if zombie.hit_box.colliderect(self.player.hit_box):
-                zombie.speed = zombie.speed_base * 0.1
-                self.player.take_damage()
-                self.damage_flash_alpha = min(180, self.damage_flash_alpha + 60)
-            else:
-                zombie.speed = zombie.speed_base
+    # ---- draw ----
 
     def draw(self):
         pygame.display.set_caption(f"{self.app.clock.get_fps():.2f}")
@@ -425,8 +595,6 @@ class PlayState(State):
 
         self.blood_splatters.draw(self.surface)
 
-        # Visible interactable groups (Wall / BarbWire are invisible —
-        # the world is the background image).
         visible_interactables = (
             self.doors, self.wall_buys, self.windows,
             self.perk_machines, self.mystery_boxes, self.pack_a_punch_machines,
@@ -444,7 +612,7 @@ class PlayState(State):
         for sprite in self.zombies:
             self.surface.blit(sprite.image, self.camera.apply(sprite))
 
-        # Floating points text + muzzle flashes drawn in world (camera-applied).
+        # Floating points + muzzle flashes
         for sprite in self.muzzle_flashes:
             self.surface.blit(sprite.image, self.camera.apply(sprite))
         for sprite in self.floating_texts:
@@ -452,6 +620,7 @@ class PlayState(State):
 
         self._draw_low_health_overlay()
         self._draw_damage_flash()
+        self._draw_player_labels()
 
         self.hud.draw(self.surface, self)
 
@@ -460,13 +629,36 @@ class PlayState(State):
 
         pygame.display.flip()
 
+    def _draw_player_labels(self):
+        if len(self.players) <= 1:
+            return
+        font = pygame.font.Font(None, 18)
+        for p in self.players:
+            label_color = PLAYER_TINTS[p.player_id % len(PLAYER_TINTS)] or (220, 220, 220)
+            text = font.render(p.name, True, label_color)
+            screen_pos = (
+                p.rect.centerx + self.camera.camera.x - text.get_width() // 2,
+                p.rect.top + self.camera.camera.y - 16,
+            )
+            self.surface.blit(text, screen_pos)
+            if p.is_down:
+                # show a revive bar
+                pct = min(1.0, p.revive_progress_ms / REVIVE_HOLD_MS)
+                bar = pygame.Rect(0, 0, 36, 5)
+                bar.midbottom = (
+                    p.rect.centerx + self.camera.camera.x,
+                    p.rect.top + self.camera.camera.y - 2,
+                )
+                pygame.draw.rect(self.surface, (60, 60, 60), bar)
+                pygame.draw.rect(self.surface, (0, 220, 0),
+                                  (bar.x, bar.y, int(bar.w * pct), bar.h))
+
     def _draw_low_health_overlay(self):
-        import math
-        ratio = self.player.health / max(1, self.player.max_health)
+        ratio = self.local_player.health / max(1, self.local_player.max_health)
         if ratio >= 0.3:
             return
         intensity = max(0.0, min(1.0, (0.3 - ratio) / 0.3))
-        pulse = (math.sin(pygame.time.get_ticks() / 200) + 1) / 2  # 0..1
+        pulse = (math.sin(pygame.time.get_ticks() / 200) + 1) / 2
         alpha = int(70 + 120 * intensity * (0.5 + 0.5 * pulse))
         alpha = max(0, min(255, alpha))
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)

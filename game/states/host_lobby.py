@@ -1,0 +1,156 @@
+"""Host lobby: shows our LAN IP, lists connected players, lets us pick a
+map and start the game."""
+import socket
+import pygame
+
+from settings import (
+    SCREEN_WIDTH,
+    SCREEN_HEIGHT,
+    MENU_TITLE,
+    MENU_TEXT,
+    MENU_TEXT_DIM,
+    GOLD,
+    DEFAULT_HOST_PORT,
+    MAX_PLAYERS,
+)
+from game.net.host import HostServer
+from game.states.base import State
+from game.ui.menu_widgets import Button, draw_menu_background
+from game.world import map_loader
+
+
+def get_local_ip() -> str:
+    """Best-effort local LAN IP. Falls back to 127.0.0.1 if no network."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        # Doesn't actually send anything; just picks the right interface.
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except OSError:
+        return "127.0.0.1"
+
+
+class HostLobbyState(State):
+    def on_enter(self, **kwargs):
+        self.title_font = pygame.font.Font(None, 80)
+        self.body_font = pygame.font.Font(None, 32)
+        self.btn_font = pygame.font.Font(None, 36)
+
+        self.server = HostServer(port=DEFAULT_HOST_PORT, max_clients=MAX_PLAYERS - 1)
+        self.server.start()
+
+        self.local_ip = get_local_ip()
+        self.maps = map_loader.list_maps()
+        self.selected_map_idx = 0 if self.maps else -1
+
+        cx = SCREEN_WIDTH // 2
+        self.start_button = Button("Start Game", (cx, SCREEN_HEIGHT - 120), self.btn_font, width=240)
+        self.back_button = Button("Cancel", (140, SCREEN_HEIGHT - 60), self.btn_font, width=200, height=44)
+        self.next_map_btn = Button(">", (cx + 200, 480), self.btn_font, width=48, height=44)
+        self.prev_map_btn = Button("<", (cx - 200, 480), self.btn_font, width=48, height=44)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEMOTION:
+            for b in (self.start_button, self.back_button, self.next_map_btn, self.prev_map_btn):
+                b.update_hover(event.pos)
+        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
+            self._cancel()
+            return
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.back_button.clicked(event):
+                self._cancel()
+                return
+            if self.start_button.clicked(event):
+                self._start_game()
+                return
+            if self.maps:
+                if self.next_map_btn.clicked(event):
+                    self.selected_map_idx = (self.selected_map_idx + 1) % len(self.maps)
+                elif self.prev_map_btn.clicked(event):
+                    self.selected_map_idx = (self.selected_map_idx - 1) % len(self.maps)
+
+    def _cancel(self):
+        self.server.shutdown()
+        self.app.switch("multiplayer_menu")
+
+    def _start_game(self):
+        if self.selected_map_idx < 0:
+            return
+        from game.net import protocol
+        fname = self.maps[self.selected_map_idx]
+        data = map_loader.load(f"maps/{fname}")
+        clients = self.server.connected_clients()
+        # Tell each client the game is starting + the map data.
+        self.server.broadcast({
+            "type": protocol.S_START_GAME,
+            "map_name": fname,
+            "grid": data["grid"],
+            "background_image_path": data["background_image_path"],
+            "door_costs": data["door_costs"],
+            "wall_buy_weapons": data["wall_buy_weapons"],
+            "perk_machine_perks": data["perk_machine_perks"],
+        })
+        self.app.switch(
+            "host_play",
+            server=self.server,
+            lobby_clients=clients,
+            grid=data["grid"],
+            background=data["background_image_path"],
+            door_costs=data["door_costs"],
+            wall_buy_weapons=data["wall_buy_weapons"],
+            perk_machine_perks=data["perk_machine_perks"],
+        )
+
+    def update(self):
+        # Push lobby state to clients so they see who else has joined.
+        from game.net import protocol
+        clients = self.server.connected_clients()
+        self.server.broadcast({
+            "type": protocol.S_LOBBY,
+            "players": [{"id": c.player_id, "name": c.name} for c in clients],
+            "hosting_name": "Host",
+            "map_name": self.maps[self.selected_map_idx] if self.selected_map_idx >= 0 else "",
+        })
+
+    def draw(self):
+        draw_menu_background(self.surface, pygame.time.get_ticks())
+
+        title = self.title_font.render("HOSTING", True, MENU_TITLE)
+        self.surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 60))
+
+        ip_line = self.body_font.render(
+            f"Tell friends to join: {self.local_ip}:{DEFAULT_HOST_PORT}", True, GOLD,
+        )
+        self.surface.blit(ip_line, (SCREEN_WIDTH // 2 - ip_line.get_width() // 2, 160))
+
+        # Connected players
+        clients = self.server.connected_clients()
+        players_label = self.body_font.render(
+            f"Players in lobby: {1 + len(clients)} / {MAX_PLAYERS}", True, MENU_TEXT,
+        )
+        self.surface.blit(players_label, (SCREEN_WIDTH // 2 - players_label.get_width() // 2, 220))
+        ypos = 270
+        host_line = self.body_font.render("- Host (you)", True, MENU_TEXT)
+        self.surface.blit(host_line, (SCREEN_WIDTH // 2 - 120, ypos))
+        ypos += 30
+        for c in clients:
+            line = self.body_font.render(f"- {c.name}", True, MENU_TEXT)
+            self.surface.blit(line, (SCREEN_WIDTH // 2 - 120, ypos))
+            ypos += 30
+
+        # Map picker
+        map_label = self.body_font.render("Map:", True, MENU_TEXT_DIM)
+        self.surface.blit(map_label, (SCREEN_WIDTH // 2 - 50, 440))
+        map_name = self.maps[self.selected_map_idx] if self.maps else "(no maps)"
+        map_text = self.body_font.render(map_name, True, GOLD)
+        self.surface.blit(map_text, (SCREEN_WIDTH // 2 - map_text.get_width() // 2, 480))
+        if self.maps:
+            self.next_map_btn.draw(self.surface)
+            self.prev_map_btn.draw(self.surface)
+
+        self.start_button.draw(self.surface)
+        self.back_button.draw(self.surface)
+
+        pygame.display.flip()

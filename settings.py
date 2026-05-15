@@ -76,6 +76,19 @@ PACK_A_PUNCH_DAMAGE_MULT = 2.5
 PACK_A_PUNCH_FIRE_RATE_MULT = 1.2
 PACK_A_PUNCH_MAG_MULT = 2.0
 
+# Multiplayer / down + revive
+MAX_PLAYERS = 4
+PLAYER_BLEED_OUT_MS = 30_000
+REVIVE_HOLD_MS = 3_000        # how long teammate must hold F to revive
+REVIVE_RANGE_PX = 60
+PLAYER_TINTS = (
+    None,            # P1: original sprite
+    (60, 160, 255),  # P2: blue tint
+    (80, 220, 80),   # P3: green tint
+    (255, 200, 60),  # P4: yellow tint
+)
+DEFAULT_HOST_PORT = 50515
+
 # Round
 ROUND_SPAWN_WINDOW_SECONDS = 30
 ROUND_HEALTH_RAMP_PER_ROUND = 0.1

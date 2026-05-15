@@ -74,9 +74,17 @@ class Hellhound(Zombie):
         self.speed = self.speed_base
         self.health *= self._HEALTH_MULT
 
-    def update(self, player_pos):
+    def update(self, scene_or_pos=None):
         # Skip pathfinding — always bee-line. (Override of Zombie.update.)
         if self.health <= 0:
             self.kill()
             return
+        if hasattr(scene_or_pos, "nearest_player_to"):
+            target = scene_or_pos.nearest_player_to(self.pos)
+            player_pos = (target.pos.x, target.pos.y) if target else (self.pos.x, self.pos.y)
+        elif scene_or_pos is None:
+            target = self.scene.nearest_player_to(self.pos)
+            player_pos = (target.pos.x, target.pos.y) if target else (self.pos.x, self.pos.y)
+        else:
+            player_pos = scene_or_pos
         self._aim(player_pos)

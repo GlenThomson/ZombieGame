@@ -48,15 +48,29 @@ class Zombie(pygame.sprite.Sprite):
         self.path_index = 0
 
     def _compute_path(self):
-        return find_path(self.scene.grid, self.pos, self.scene.player.tile_position())
+        target = self.scene.nearest_player_to(self.pos)
+        if target is None:
+            return []
+        return find_path(self.scene.grid, self.pos, target.tile_position())
 
     def tile_position(self):
         return self.pos // TILE_SIZE
 
-    def update(self, player_pos):
+    def update(self, scene_or_pos=None):
         if self.health <= 0:
             self.kill()
             return
+
+        # Compatibility: zombie.update() may be called with a (x, y) tuple
+        # (legacy path) or with the scene object (multi-player path).
+        if hasattr(scene_or_pos, "nearest_player_to"):
+            target = scene_or_pos.nearest_player_to(self.pos)
+            player_pos = (target.pos.x, target.pos.y) if target is not None else (self.pos.x, self.pos.y)
+        elif scene_or_pos is None:
+            target = self.scene.nearest_player_to(self.pos)
+            player_pos = (target.pos.x, target.pos.y) if target is not None else (self.pos.x, self.pos.y)
+        else:
+            player_pos = scene_or_pos
 
         if self._is_close_to_player() and self._has_line_of_sight(player_pos):
             if not self.is_chasing:
@@ -123,7 +137,10 @@ class Zombie(pygame.sprite.Sprite):
         return False
 
     def _is_close_to_player(self) -> bool:
-        return self.pos.distance_to(self.scene.player.pos) < ZOMBIE_CHASE_DISTANCE
+        target = self.scene.nearest_player_to(self.pos)
+        if target is None:
+            return False
+        return self.pos.distance_to(target.pos) < ZOMBIE_CHASE_DISTANCE
 
     def _has_line_of_sight(self, target_pos) -> bool:
         start = self.pos

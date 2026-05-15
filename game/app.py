@@ -22,12 +22,22 @@ class App:
         from game.states.play import PlayState
         from game.states.game_over import GameOverState
         from game.states.mapmaking import MapMakingState
+        from game.states.multiplayer_menu import MultiplayerMenuState
+        from game.states.host_lobby import HostLobbyState
+        from game.states.join_lobby import JoinLobbyState
+        from game.states.host_play import HostPlayState
+        from game.states.client_play import ClientPlayState
         self._state_classes = {
             "menu": MenuState,
             "map_select": MapSelectState,
             "play": PlayState,
             "game_over": GameOverState,
             "mapmaking": MapMakingState,
+            "multiplayer_menu": MultiplayerMenuState,
+            "host_lobby": HostLobbyState,
+            "join_lobby": JoinLobbyState,
+            "host_play": HostPlayState,
+            "client_play": ClientPlayState,
         }
         self.state = None
         self.switch("menu")
