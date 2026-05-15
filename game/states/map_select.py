@@ -50,6 +50,7 @@ class MapSelectState(State):
                         background=data["background_image_path"],
                         door_costs=data["door_costs"],
                         wall_buy_weapons=data["wall_buy_weapons"],
+                        perk_machine_perks=data["perk_machine_perks"],
                     )
                     return
 

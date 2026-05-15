@@ -78,6 +78,8 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
     starting_windows = list(scene.windows)
     saw_points_awarded = False
     starting_points = scene.player.points
+    saw_perk_bought = False
+    starting_max_health = scene.player.max_health
 
     for frame in range(frames):
         # Drive movement: cycle WASD every 30 frames so the player wanders
@@ -140,16 +142,23 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
             scene._fire_interaction()  # buy
             scene._fire_interaction()  # refill
             saw_wall_buy_used = True
+        if frame == 115 and scene.perk_machines:
+            pm = next(iter(scene.perk_machines))
+            scene.player.points = 99999
+            scene.focused_interactable = pm
+            scene._fire_interaction()
+            saw_perk_bought = scene.perk_system.has(pm.perk.name) and \
+                scene.player.max_health > starting_max_health
         if frame == 120 and starting_windows:
             win = starting_windows[0]
             if win.alive():
-                # Slam plank counter to break it
+                # Slam plank counter to break it. Set last_break_at far
+                # enough in the past that the cooldown is definitely satisfied
+                # regardless of real wall-clock pacing.
                 win.planks = 1
-                win.last_break_at = 0
-                # Force a zombie next to it
-                if scene.zombie_spawns:
-                    from game.entities.zombie import Zombie as _Z
-                    z = _Z(scene, win.rect.x - 30, win.rect.y)
+                win.last_break_at = -10_000
+                from game.entities.zombie import Zombie as _Z
+                _Z(scene, win.rect.x, win.rect.y)
                 win.update_against_zombies()
                 if not win.alive():
                     saw_window_break = True
@@ -197,6 +206,7 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
         "saw_wall_buy_used": saw_wall_buy_used,
         "saw_window_break": saw_window_break,
         "saw_points_awarded": saw_points_awarded,
+        "saw_perk_bought": saw_perk_bought,
     }
 
 
@@ -213,13 +223,14 @@ def main():
                 and stats["saw_wall_buy_used"]
                 and stats["saw_window_break"]
                 and stats["saw_points_awarded"]
+                and stats["saw_perk_bought"]
             )
             tag = "PASS" if all_required else "OK  "
             print(
-                f"{tag} {m}  rounds:{stats['final_round']} kills:{stats['final_kills']} "
+                f"{tag} {m}  r{stats['final_round']} k{stats['final_kills']} "
                 f"door:{stats['saw_door_opened']} wb:{stats['saw_wall_buy_used']} "
-                f"win:{stats['saw_window_break']} pts:{stats['saw_points_awarded']} "
-                f"go:{stats['saw_game_over']}"
+                f"win:{stats['saw_window_break']} perk:{stats['saw_perk_bought']} "
+                f"pts:{stats['saw_points_awarded']} go:{stats['saw_game_over']}"
             )
         except Exception as e:
             print(f"FAIL {m}: {type(e).__name__}: {e}")

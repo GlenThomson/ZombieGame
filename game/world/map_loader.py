@@ -25,27 +25,32 @@ def load(path: str) -> dict:
         bg = _resolve_bg_path(raw.get("background_image_path"))
         door_costs = raw.get("door_costs") or {}
         wall_buy_weapons = raw.get("wall_buy_weapons") or {}
+        perk_machine_perks = raw.get("perk_machine_perks") or {}
     else:
         grid = raw
         bg = None
         door_costs = {}
         wall_buy_weapons = {}
+        perk_machine_perks = {}
     return {
         "grid": grid,
         "background_image_path": bg,
         "door_costs": door_costs,
         "wall_buy_weapons": wall_buy_weapons,
+        "perk_machine_perks": perk_machine_perks,
     }
 
 
 def save(grid: list, background_image_path: str | None, name: str,
-         door_costs: dict | None = None, wall_buy_weapons: dict | None = None) -> None:
+         door_costs: dict | None = None, wall_buy_weapons: dict | None = None,
+         perk_machine_perks: dict | None = None) -> None:
     os.makedirs(MAPS_DIR, exist_ok=True)
     payload = {
         "grid": grid,
         "background_image_path": background_image_path,
         "door_costs": door_costs or {},
         "wall_buy_weapons": wall_buy_weapons or {},
+        "perk_machine_perks": perk_machine_perks or {},
     }
     with open(os.path.join(MAPS_DIR, f"{name}.pkl"), "wb") as f:
         pickle.dump(payload, f)

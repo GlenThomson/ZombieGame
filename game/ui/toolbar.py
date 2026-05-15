@@ -55,7 +55,7 @@ class MapMakerToolbar:
         self.pop_up_menu = _PopUpMenu(
             surface,
             ["delete", "wall", "barb wire", "zombie spawn", "player spawn",
-             "door", "door open", "window", "wall buy"],
+             "door", "door open", "window", "wall buy", "perk machine"],
             self.text_font,
         )
         self.button_clicked = False

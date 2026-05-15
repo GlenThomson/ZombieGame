@@ -182,6 +182,7 @@ class MapMakingState(State):
             6: ((60, 35, 15), (120, 80, 40)),      # open door (dimmer)
             7: ((140, 100, 50), (200, 180, 200)),  # window
             8: ((40, 40, 50), (255, 215, 0)),      # wall buy
+            9: ((220, 0, 0), (220, 220, 220)),     # perk machine (Juggernog red)
         }
         for y, row in enumerate(self.grid):
             for x, tile in enumerate(row):

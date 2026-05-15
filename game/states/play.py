@@ -13,6 +13,7 @@ from settings import (
     INTERACT_RANGE_PX,
     DOOR_DEFAULT_COST,
     WALL_BUY_DEFAULT_WEAPON,
+    PERK_MACHINE_DEFAULT_PERK,
 )
 from game import assets
 from game.camera import Camera
@@ -24,13 +25,15 @@ from game.entities.wall import Wall, BarbWire, ZombieSpawn
 from game.entities.door import Door
 from game.entities.wall_buy import WallBuy
 from game.entities.window import Window
+from game.entities.perk_machine import PerkMachine
+from game.stats.perks import PerkSystem, PERKS
 from game.world.tile import TileType
 from game.ui.hud import HUD
 
 
 class PlayState(State):
     def on_enter(self, *, grid, background=None, door_costs=None,
-                 wall_buy_weapons=None, **kwargs):
+                 wall_buy_weapons=None, perk_machine_perks=None, **kwargs):
         # Sprite groups
         self.all_sprites = pygame.sprite.Group()
         self.bullets = pygame.sprite.Group()
@@ -43,16 +46,17 @@ class PlayState(State):
         self.doors = pygame.sprite.Group()
         self.wall_buys = pygame.sprite.Group()
         self.windows = pygame.sprite.Group()
+        self.perk_machines = pygame.sprite.Group()
         self.zombie_spawns: list[ZombieSpawn] = []
         self.interactables: set = set()
         self.interaction_prompt: str | None = None
         self.focused_interactable = None
-        self.perk_system = None  # Filled in by Tier-2 perks code if present.
 
         self.grid = grid
         self.kill_count = 0
         self.door_costs = dict(door_costs or {})
         self.wall_buy_weapons = dict(wall_buy_weapons or {})
+        self.perk_machine_perks = dict(perk_machine_perks or {})
 
         # Camera + map dimensions need to exist before Player so Player can
         # call camera-relative helpers in __init__.
@@ -62,6 +66,7 @@ class PlayState(State):
 
         self.round_manager = RoundManager(self, starting_round=1)
         self.player = Player(self, 20 * TILE_SIZE, 20 * TILE_SIZE)
+        self.perk_system = PerkSystem(self.player)
 
         self._populate_from_grid(grid)
         self._ensure_spawns_exist()
@@ -104,6 +109,10 @@ class PlayState(State):
                 elif tile == TileType.WINDOW:
                     win = Window(self, col, row)
                     self.interactables.add(win)
+                elif tile == TileType.PERK_MACHINE:
+                    perk_name = self.perk_machine_perks.get((col, row), PERK_MACHINE_DEFAULT_PERK)
+                    pm = PerkMachine(self, col, row, perk_name)
+                    self.interactables.add(pm)
         self._player_spawn_set = player_spawn_set
 
     def _ensure_spawns_exist(self):
@@ -161,6 +170,23 @@ class PlayState(State):
         for x, y in candidates:
             self.zombie_spawns.append(ZombieSpawn(x, y))
 
+    def _first_empty_tile_far_from_player(self) -> tuple[int, int] | None:
+        rows = len(self.grid)
+        cols = len(self.grid[0])
+        px = self.player.pos.x / TILE_SIZE
+        py = self.player.pos.y / TILE_SIZE
+        best = None
+        best_d2 = 0
+        for y in range(rows):
+            for x in range(cols):
+                if self.grid[y][x] != TileType.EMPTY:
+                    continue
+                d2 = (x - px) ** 2 + (y - py) ** 2
+                if d2 > best_d2:
+                    best_d2 = d2
+                    best = (x, y)
+        return best
+
     def _auto_seed_tier1_tiles_if_missing(self):
         """If the loaded map has no doors / wall buys / windows yet, drop one
         of each in plausible spots so Tier 1 mechanics can be tried out
@@ -168,7 +194,8 @@ class PlayState(State):
         has_door = any(d for d in self.doors)
         has_wall_buy = any(w for w in self.wall_buys)
         has_window = any(w for w in self.windows)
-        if has_door and has_wall_buy and has_window:
+        has_perk = any(w for w in self.perk_machines)
+        if has_door and has_wall_buy and has_window and has_perk:
             return
 
         # Find candidate tiles: walls adjacent to empty tiles work for doors
@@ -217,11 +244,26 @@ class PlayState(State):
                 self.interactables.add(wb)
         if not has_window:
             spot = take_one()
-            if spot:
+            if spot is None:
+                # Sparse maps may run out of wall-adjacent candidates. Windows
+                # can sit on any empty tile — fall back to that.
+                spot = self._first_empty_tile_far_from_player()
+                if spot is not None:
+                    self.grid[spot[1]][spot[0]] = TileType.WINDOW
+                    win = Window(self, spot[0], spot[1])
+                    self.interactables.add(win)
+            else:
                 x, y = spot
                 self.grid[y][x] = TileType.WINDOW
                 win = Window(self, x, y)
                 self.interactables.add(win)
+        if not has_perk:
+            spot = take_one()
+            if spot:
+                x, y = spot
+                self.grid[y][x] = TileType.PERK_MACHINE
+                pm = PerkMachine(self, x, y, PERK_MACHINE_DEFAULT_PERK)
+                self.interactables.add(pm)
 
     # ---- per-frame ----
 
@@ -312,19 +354,17 @@ class PlayState(State):
 
         self.blood_splatters.draw(self.surface)
 
-        # Doors / wall buys / windows are visible (unlike Wall / BarbWire
-        # which are invisible — the world is the background image).
-        for sprite in self.doors:
-            self.surface.blit(sprite.image, self.camera.apply(sprite))
-        for sprite in self.wall_buys:
-            self.surface.blit(sprite.image, self.camera.apply(sprite))
-        for sprite in self.windows:
-            self.surface.blit(sprite.image, self.camera.apply(sprite))
+        # Doors / wall buys / windows / perk machines are visible (unlike
+        # Wall / BarbWire which are invisible — the world is the background image).
+        for group in (self.doors, self.wall_buys, self.windows, self.perk_machines):
+            for sprite in group:
+                self.surface.blit(sprite.image, self.camera.apply(sprite))
 
         for sprite in self.all_sprites:
             if sprite in self.walls or sprite in self.barb_wire:
                 continue
-            if sprite in self.doors or sprite in self.wall_buys or sprite in self.windows:
+            if (sprite in self.doors or sprite in self.wall_buys
+                    or sprite in self.windows or sprite in self.perk_machines):
                 continue
             self.surface.blit(sprite.image, self.camera.apply(sprite))
         for sprite in self.zombies:

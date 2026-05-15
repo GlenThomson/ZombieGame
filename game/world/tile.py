@@ -13,8 +13,8 @@ class TileType(IntEnum):
     DOOR_OPEN = 6
     WINDOW = 7
     WALL_BUY = 8
+    PERK_MACHINE = 9
     # Reserved for upcoming features:
-    # PERK_MACHINE = 9
     # MYSTERY_BOX = 10
     # PACK_A_PUNCH = 11
 
