@@ -48,18 +48,23 @@ class WallBuy(pygame.sprite.Sprite):
             if player.points < self.buy_cost:
                 return
             if not player.inventory.add(self.weapon_name):
-                # Inventory full — replace the equipped slot.
                 player.inventory.replace_equipped(self.weapon_name)
             player.points -= self.buy_cost
         else:
             if player.points < self.ammo_cost:
                 return
             for slot in player.inventory.slots:
-                if slot is not None and slot.name == self.weapon_name:
+                if slot is not None and slot.definition.name == self.weapon_name:
                     slot.current_ammo = slot.magazine_size
+                    slot.reserve_ammo = slot.reserve_max
                     slot.is_reloading = False
                     break
             player.points -= self.ammo_cost
 
     def _player_owns_weapon(self, player) -> bool:
-        return any(s is not None and s.name == self.weapon_name for s in player.inventory.slots)
+        # Compare against the underlying definition name so a Pack-a-Punched
+        # version (e.g. "Pistol PaP") still counts as owning "Pistol".
+        return any(
+            s is not None and s.definition.name == self.weapon_name
+            for s in player.inventory.slots
+        )

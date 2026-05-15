@@ -22,6 +22,7 @@ class Weapon:
         self.shoot_sound = assets.sound(self.definition.shoot_sound)
         self.reload_sound = assets.sound("reload_sound.mp3")
         self.current_ammo = self.definition.magazine_size
+        self.reserve_ammo = self.definition.reserve_max
         self.is_reloading = False
         self.last_shot_time = 0
         self.reload_started_at = 0
@@ -39,6 +40,10 @@ class Weapon:
     @property
     def magazine_size(self) -> int:
         return int(self._stat("magazine_size", self.definition.magazine_size))
+
+    @property
+    def reserve_max(self) -> int:
+        return int(self._stat("reserve_max", self.definition.reserve_max))
 
     @property
     def fire_rate(self) -> float:
@@ -82,10 +87,9 @@ class Weapon:
 
         self.last_shot_time = now
         self.current_ammo -= 1
-        self.shoot_sound.play()
+        self._announce("shoot", self.definition.shoot_sound)
         for _ in range(self.definition.pellets_per_shot):
             self._fire_bullet()
-        # Muzzle flash at the barrel position.
         from game.entities.effects import MuzzleFlash
         MuzzleFlash(
             self.owner.scene,
@@ -97,11 +101,15 @@ class Weapon:
     def reload(self):
         if self.is_reloading:
             return
-        if self.current_ammo == self.magazine_size:
+        if self.current_ammo >= self.magazine_size:
+            return
+        if self.reserve_ammo <= 0 and self.definition.reserve_max > 0:
+            # Out of reserve — nothing to load. (Wonder weapons with no
+            # reserve concept skip this check.)
             return
         self.is_reloading = True
         self.reload_started_at = pygame.time.get_ticks()
-        self.reload_sound.play()
+        self._announce("reload", "reload_sound.mp3")
 
     def update(self):
         if not self.is_reloading:
@@ -109,7 +117,27 @@ class Weapon:
         elapsed = pygame.time.get_ticks() - self.reload_started_at
         if elapsed >= self.reload_time * 1000:
             self.is_reloading = False
+            self._finish_reload()
+
+    def _finish_reload(self):
+        if self.definition.reserve_max == 0:
+            # No reserve concept — top up freely.
             self.current_ammo = self.magazine_size
+            return
+        needed = self.magazine_size - self.current_ammo
+        transferred = min(needed, self.reserve_ammo)
+        self.current_ammo += transferred
+        self.reserve_ammo -= transferred
+
+    def _announce(self, event_name: str, sound_name: str):
+        """Play locally and (if there's a host) broadcast so clients hear it."""
+        scene = self.owner.scene
+        announcer = getattr(scene, "announce_event", None)
+        if announcer is not None:
+            announcer(event_name, {"sound": sound_name, "player_id": self.owner.player_id})
+        else:
+            # Plain SP — just play.
+            assets.sound(sound_name).play()
 
     def _fire_bullet(self):
         scene = self.owner.scene

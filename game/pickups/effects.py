@@ -46,28 +46,30 @@ def apply(name: str, scene, collector=None):
 
 @effect("instant_kill", weight=1.0, icon=("IK", (220, 30, 30)))
 def _instant_kill(scene, collector=None):
-    assets.sound("instant_kill.mp3").play()
+    scene.announce_event("instant_kill", {"sound": "instant_kill.mp3"})
     for zombie in scene.zombies:
         zombie.health = 1
 
 
 @effect("nuke_pickup", weight=2.0, icon=("NK", (60, 60, 80)))
 def _nuke(scene, collector=None):
-    assets.sound("kaboom.mp3").play()
-    assets.sound("nuke_sound.mp3").play()
+    scene.announce_event("nuke", {"sound": "kaboom.mp3"})
+    scene.announce_event("nuke", {"sound": "nuke_sound.mp3"})
     for zombie in scene.zombies:
         zombie.kill()
 
 
 @effect("max_ammo", weight=1.5, icon=("MA", (220, 200, 30)))
 def _max_ammo(scene, collector=None):
-    assets.sound("end_round_sound.mp3").play()
-    # All players' weapons refill (CoD: max-ammo helps the whole team).
+    scene.announce_event("max_ammo", {"sound": "end_round_sound.mp3"})
+    # All players' weapons get a full mag + full reserve (CoD: max-ammo
+    # helps the whole team).
     for player in scene.players:
         for slot in player.inventory.slots:
             if slot is None:
                 continue
             slot.current_ammo = slot.magazine_size
+            slot.reserve_ammo = slot.reserve_max
             slot.is_reloading = False
 
 
@@ -91,3 +93,22 @@ def _carpenter(scene, collector=None):
             repaired_anything = True
     if repaired_anything and collector is not None:
         collector.points += 200
+
+
+@effect("fire_sale", weight=0.6, icon=("FS", (220, 60, 200)))
+def _fire_sale(scene, collector=None):
+    """Mystery boxes drop to 10 points for 30 seconds."""
+    from settings import MYSTERY_BOX_COST
+
+    def _start():
+        for box in scene.mystery_boxes:
+            box.cost = 10
+
+    def _end():
+        for box in scene.mystery_boxes:
+            box.cost = MYSTERY_BOX_COST
+
+    scene.announce_event("fire_sale", {"sound": "kaboom.mp3"})
+    scene.start_timed_effect(
+        "fire_sale", duration_ms=30_000, on_apply=_start, on_expire=_end,
+    )

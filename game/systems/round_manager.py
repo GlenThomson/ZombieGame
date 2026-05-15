@@ -70,9 +70,22 @@ class RoundManager:
         return Zombie
 
     def _begin_next_round(self):
+        # A dogs round just ended → guaranteed Max Ammo for the team.
+        ended_dogs_round = self.is_hellhound_round(self.current_round)
+
         self.current_round += 1
-        self.scene.player.grenade_count = STARTING_GRENADES
+        for p in self.scene.players:
+            p.grenade_count = STARTING_GRENADES
         self.round_text_countdown = 500
         self.end_round_sound.play()
         self.zombies_to_spawn = self._target_zombie_count(self.current_round)
         self.time_between_spawns = self.spawn_window_seconds / max(1, self.zombies_to_spawn)
+
+        if ended_dogs_round:
+            from game.pickups.pickup import Pickup
+            # Drop next to the first standing player so it's easy to pick up.
+            target = next(
+                (p for p in self.scene.players if not p.is_down and not p.is_dead()),
+                self.scene.players[0],
+            )
+            Pickup(self.scene, target.rect.x, target.rect.y, kind="max_ammo")

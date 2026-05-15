@@ -88,11 +88,18 @@ class MysteryBox(pygame.sprite.Sprite):
         if self.state == "spinning":
             return
         if self.state == "ready":
-            # Hand the weapon to the player.
             if self.committed_weapon is None:
                 return
-            if not player.inventory.add(self.committed_weapon):
+            added = player.inventory.add(self.committed_weapon)
+            if not added:
                 player.inventory.replace_equipped(self.committed_weapon)
+            # Mystery box hands you a fully-loaded weapon (mag + reserve).
+            for slot in player.inventory.slots:
+                if slot is not None and slot.definition.name == self.committed_weapon:
+                    slot.current_ammo = slot.magazine_size
+                    slot.reserve_ammo = slot.reserve_max
+                    slot.is_reloading = False
+                    break
             self.state = "idle"
             self.current_label = "?"
             self.committed_weapon = None

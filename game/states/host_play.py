@@ -79,6 +79,18 @@ class HostPlayState(PlayState):
         except Exception:
             pass
 
+    def announce_event(self, name: str, data: dict | None = None):
+        # Play locally (host hears it) AND broadcast so clients hear it too.
+        super().announce_event(name, data)
+        try:
+            self.server.broadcast({
+                "type": protocol.S_EVENT,
+                "event": name,
+                "data": data or {},
+            })
+        except Exception:
+            pass
+
     def on_exit(self):
         # Tell clients we're done so they fall back to the menu instead of
         # waiting on snapshots that will never come.

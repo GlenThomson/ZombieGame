@@ -92,6 +92,14 @@ class ClientPlayState(State):
             kind = msg.get("type")
             if kind == protocol.S_SNAPSHOT:
                 self.latest_snapshot = msg
+            elif kind == protocol.S_EVENT:
+                data = msg.get("data") or {}
+                sound_name = data.get("sound")
+                if sound_name:
+                    try:
+                        assets.sound(sound_name).play()
+                    except Exception:
+                        pass
             elif kind == protocol.S_GAME_OVER:
                 self.app.switch(
                     "game_over",
@@ -353,8 +361,20 @@ class ClientPlayState(State):
         pygame.draw.rect(self.surface, (0, 255, 0), (x, y, int(bar_w_max * ratio), bar_h))
         pygame.draw.rect(self.surface, MENU_TEXT, (x, y, bar_w_max, bar_h), 2)
 
-        # Weapon panel
-        weapon_text = f"{me.get('weapon') or '-'}  {me['ammo']}/{me['mag']}"
+        # Big ammo readout (bottom-right)
+        big_font = pygame.font.Font(None, 56)
+        small_font = pygame.font.Font(None, 28)
+        ammo_surf = big_font.render(str(me["ammo"]), True, GOLD)
+        ammo_rect = ammo_surf.get_rect(bottomright=(SCREEN_WIDTH - 30, SCREEN_HEIGHT - 40))
+        self.surface.blit(ammo_surf, ammo_rect)
+        reserve = me.get("reserve", 0)
+        reserve_max = me.get("reserve_max", 0)
+        sub = f"/{me['mag']}   {reserve}" if reserve_max > 0 else f"/{me['mag']}"
+        sub_surf = small_font.render(sub, True, MENU_TEXT_DIM)
+        sub_rect = sub_surf.get_rect(bottomright=(SCREEN_WIDTH - 30, SCREEN_HEIGHT - 12))
+        self.surface.blit(sub_surf, sub_rect)
+
+        weapon_text = me.get("weapon") or "-"
         if me.get("is_reloading"):
             weapon_text += "  (reloading)"
         rendered = self.weapon_font.render(weapon_text, True, MENU_TEXT)

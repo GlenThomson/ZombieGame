@@ -11,6 +11,8 @@ class HUD:
         self.weapon_font = pygame.font.Font(None, 28)
         self.points_font = pygame.font.Font(None, 44)
         self.prompt_font = pygame.font.Font(None, 32)
+        self.ammo_big_font = pygame.font.Font(None, 56)
+        self.ammo_reserve_font = pygame.font.Font(None, 28)
 
     def draw(self, surface, scene):
         # Round + kills (bottom-left)
@@ -47,9 +49,22 @@ class HUD:
         weapon = player.weapon
         if weapon is None:
             return
-        text = f"{weapon.name}  {weapon.current_ammo}/{weapon.magazine_size}"
-        if weapon.is_reloading:
-            text += "  (reloading)"
+        # Big ammo readout near bottom-right (CoD-style).
+        ammo_text = f"{weapon.current_ammo}"
+        ammo_surf = self.ammo_big_font.render(ammo_text, True, GOLD)
+        ammo_rect = ammo_surf.get_rect(bottomright=(SCREEN_WIDTH - 30, SCREEN_HEIGHT - 40))
+        surface.blit(ammo_surf, ammo_rect)
+        # Magazine size + reserve underneath in smaller text.
+        if weapon.reserve_max > 0:
+            sub = f"/{weapon.magazine_size}   {weapon.reserve_ammo}"
+        else:
+            sub = f"/{weapon.magazine_size}"
+        sub_surf = self.ammo_reserve_font.render(sub, True, MENU_TEXT_DIM)
+        sub_rect = sub_surf.get_rect(bottomright=(SCREEN_WIDTH - 30, SCREEN_HEIGHT - 12))
+        surface.blit(sub_surf, sub_rect)
+
+        # Weapon name + reload tag along the top-right.
+        text = weapon.name + ("  (reloading)" if weapon.is_reloading else "")
         rendered = self.weapon_font.render(text, True, MENU_TEXT)
         surface.blit(rendered, (SCREEN_WIDTH - 220, 40))
 

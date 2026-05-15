@@ -96,6 +96,8 @@ def _player_dict(player, scene) -> dict:
         "weapon_image": "player.png",  # placeholder for muzzle/icon refs
         "ammo": weapon.current_ammo if weapon else 0,
         "mag": weapon.magazine_size if weapon else 0,
+        "reserve": weapon.reserve_ammo if weapon else 0,
+        "reserve_max": weapon.reserve_max if weapon else 0,
         "is_reloading": bool(weapon.is_reloading) if weapon else False,
         "is_packed": bool(weapon.is_packed) if weapon else False,
         "perks": [(p.name, tuple(p.icon_color)) for p in (perks.owned() if perks else [])],

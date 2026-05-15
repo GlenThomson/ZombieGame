@@ -16,6 +16,8 @@ from settings import (
     WHITE,
     POINTS_PER_HIT,
     POINTS_PER_KILL,
+    POINTS_PER_HEADSHOT_HIT,
+    HEADSHOT_DAMAGE_MULT,
     INTERACT_RANGE_PX,
     DOOR_DEFAULT_COST,
     WALL_BUY_DEFAULT_WEAPON,
@@ -513,24 +515,30 @@ class PlayState(State):
     def _sprite_interactions(self):
         from game.entities.effects import FloatingText
         mult = self.points_multiplier
-        # Bullets only collide with zombies — friendly fire is implicitly off.
         for zombie in self.zombies:
             for bullet in self.bullets:
-                if zombie.rect.colliderect(bullet.hit_box):
-                    bullet.hit_count += 1
-                    was_alive = zombie.health > 0
-                    zombie.take_damage(bullet.damage)
-                    shooter = self._player_by_id(bullet.shooter_id)
-                    if was_alive and shooter is not None:
-                        if zombie.health <= 0:
-                            pts = int(POINTS_PER_KILL * mult)
-                            shooter.points += pts
-                            FloatingText(self, zombie.pos, f"+{pts}", color=(255, 215, 0))
-                        else:
-                            pts = int(POINTS_PER_HIT * mult)
-                            shooter.points += pts
-                    if bullet.hit_count >= bullet.penetration:
-                        bullet.kill()
+                if not zombie.rect.colliderect(bullet.hit_box):
+                    continue
+                bullet.hit_count += 1
+                # Headshot: bullet entered the top quarter of the zombie's rect.
+                is_headshot = bullet.hit_box.centery < zombie.rect.top + zombie.rect.height * 0.25
+                damage = bullet.damage * (HEADSHOT_DAMAGE_MULT if is_headshot else 1.0)
+                was_alive = zombie.health > 0
+                zombie.take_damage(damage)
+                shooter = self._player_by_id(bullet.shooter_id)
+                if was_alive and shooter is not None:
+                    if zombie.health <= 0:
+                        pts = int(POINTS_PER_KILL * mult)
+                        shooter.points += pts
+                        color = (255, 90, 90) if is_headshot else (255, 215, 0)
+                        label = f"+{pts}!" if is_headshot else f"+{pts}"
+                        FloatingText(self, zombie.pos, label, color=color)
+                    else:
+                        base = POINTS_PER_HIT + (POINTS_PER_HEADSHOT_HIT if is_headshot else 0)
+                        pts = int(base * mult)
+                        shooter.points += pts
+                if bullet.hit_count >= bullet.penetration:
+                    bullet.kill()
 
             # Each player can take damage from any zombie touching them.
             for player in self.players:
@@ -584,6 +592,16 @@ class PlayState(State):
         for n in expired:
             _, on_expire = self.timed_effects.pop(n)
             on_expire()
+
+    # ---- audio events ----
+
+    def announce_event(self, name: str, data: dict | None = None):
+        """Play a sound locally. HostPlayState overrides to also broadcast
+        the event to connected clients so they hear it too."""
+        sound_name = (data or {}).get("sound")
+        if sound_name:
+            from game import assets
+            assets.sound(sound_name).play()
 
     # ---- draw ----
 
