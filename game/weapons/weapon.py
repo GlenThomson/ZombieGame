@@ -85,6 +85,12 @@ class Weapon:
         self.shoot_sound.play()
         for _ in range(self.definition.pellets_per_shot):
             self._fire_bullet()
+        # Muzzle flash at the barrel position.
+        from game.entities.effects import MuzzleFlash
+        MuzzleFlash(
+            self.owner.scene,
+            (self.owner.rect.centerx, self.owner.rect.centery),
+        )
         if self.current_ammo <= 0:
             self.reload()
 

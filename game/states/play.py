@@ -51,6 +51,8 @@ class PlayState(State):
         self.perk_machines = pygame.sprite.Group()
         self.mystery_boxes = pygame.sprite.Group()
         self.pack_a_punch_machines = pygame.sprite.Group()
+        self.muzzle_flashes = pygame.sprite.Group()
+        self.floating_texts = pygame.sprite.Group()
         self.zombie_spawns: list[ZombieSpawn] = []
         self.interactables: set = set()
         self.interaction_prompt: str | None = None
@@ -65,6 +67,7 @@ class PlayState(State):
         # Timed effects (e.g. Double Points). Each entry: name → (expire_ms, on_expire).
         self.timed_effects: dict[str, tuple[int, callable]] = {}
         self.points_multiplier = 1.0
+        self.damage_flash_alpha = 0  # red overlay alpha, decays each frame
 
         # Camera + map dimensions need to exist before Player so Player can
         # call camera-relative helpers in __init__.
@@ -336,10 +339,14 @@ class PlayState(State):
         self.player.update()
         self.blood_splatters.update()
         self.grenades.update()
+        self.muzzle_flashes.update()
+        self.floating_texts.update()
         for window in list(self.windows):
             window.update_against_zombies()
         for box in list(self.mystery_boxes):
             box.update()
+        if self.damage_flash_alpha > 0:
+            self.damage_flash_alpha = max(0, self.damage_flash_alpha - 14)
 
         self._sprite_interactions()
         self._update_interaction_focus()
@@ -383,6 +390,7 @@ class PlayState(State):
         self.interaction_prompt = focused.get_prompt(self.player) if focused else None
 
     def _sprite_interactions(self):
+        from game.entities.effects import FloatingText
         damage = self.player.weapon.damage if self.player.weapon else 1
         penetration = self.player.weapon.penetration if self.player.weapon else 1
         mult = self.points_multiplier
@@ -394,14 +402,18 @@ class PlayState(State):
                     zombie.take_damage(damage)
                     if was_alive:
                         if zombie.health <= 0:
-                            self.player.points += int(POINTS_PER_KILL * mult)
+                            pts = int(POINTS_PER_KILL * mult)
+                            self.player.points += pts
+                            FloatingText(self, zombie.pos, f"+{pts}", color=(255, 215, 0))
                         else:
-                            self.player.points += int(POINTS_PER_HIT * mult)
+                            pts = int(POINTS_PER_HIT * mult)
+                            self.player.points += pts
                     if bullet.hit_count >= penetration:
                         bullet.kill()
             if zombie.hit_box.colliderect(self.player.hit_box):
                 zombie.speed = zombie.speed_base * 0.1
                 self.player.take_damage()
+                self.damage_flash_alpha = min(180, self.damage_flash_alpha + 60)
             else:
                 zombie.speed = zombie.speed_base
 
@@ -432,12 +444,46 @@ class PlayState(State):
         for sprite in self.zombies:
             self.surface.blit(sprite.image, self.camera.apply(sprite))
 
+        # Floating points text + muzzle flashes drawn in world (camera-applied).
+        for sprite in self.muzzle_flashes:
+            self.surface.blit(sprite.image, self.camera.apply(sprite))
+        for sprite in self.floating_texts:
+            self.surface.blit(sprite.image, sprite.rect)
+
+        self._draw_low_health_overlay()
+        self._draw_damage_flash()
+
         self.hud.draw(self.surface, self)
 
         if self.round_manager.round_text_countdown > 0:
             self._draw_round_text()
 
         pygame.display.flip()
+
+    def _draw_low_health_overlay(self):
+        import math
+        ratio = self.player.health / max(1, self.player.max_health)
+        if ratio >= 0.3:
+            return
+        intensity = max(0.0, min(1.0, (0.3 - ratio) / 0.3))
+        pulse = (math.sin(pygame.time.get_ticks() / 200) + 1) / 2  # 0..1
+        alpha = int(70 + 120 * intensity * (0.5 + 0.5 * pulse))
+        alpha = max(0, min(255, alpha))
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        for i in range(120):
+            a = max(0, alpha - i * 2)
+            pygame.draw.rect(
+                overlay, (200, 0, 0, a),
+                (i, i, SCREEN_WIDTH - 2 * i, SCREEN_HEIGHT - 2 * i), 2,
+            )
+        self.surface.blit(overlay, (0, 0))
+
+    def _draw_damage_flash(self):
+        if self.damage_flash_alpha <= 0:
+            return
+        flash = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        flash.fill((220, 0, 0, self.damage_flash_alpha))
+        self.surface.blit(flash, (0, 0))
 
     def _draw_round_text(self):
         self.round_manager.round_text_countdown -= 1
