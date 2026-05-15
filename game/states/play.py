@@ -35,7 +35,7 @@ from game.systems.interaction import find_focused
 from game.systems.input import LocalInputSource, RemoteInputSource
 from game.entities.player import Player
 from game.entities.wall import Wall, BarbWire, ZombieSpawn
-from game.entities.door import Door
+from game.entities.door import Door, DoorGroup
 from game.entities.wall_buy import WallBuy
 from game.entities.window import Window
 from game.entities.perk_machine import PerkMachine
@@ -174,6 +174,7 @@ class PlayState(State):
 
     def _populate_from_grid(self, grid):
         player_spawn_set = False
+        door_tile_set: set[tuple[int, int]] = set()
         for row, tiles in enumerate(grid):
             for col, tile in enumerate(tiles):
                 if tile == TileType.WALL:
@@ -188,9 +189,7 @@ class PlayState(State):
                         p.pos.y = row * TILE_SIZE
                     player_spawn_set = True
                 elif tile == TileType.DOOR_CLOSED:
-                    cost = self.door_costs.get((col, row), DOOR_DEFAULT_COST)
-                    door = Door(self, col, row, cost)
-                    self.interactables.add(door)
+                    door_tile_set.add((col, row))
                 elif tile == TileType.DOOR_OPEN:
                     pass
                 elif tile == TileType.WALL_BUY:
@@ -210,7 +209,37 @@ class PlayState(State):
                 elif tile == TileType.PACK_A_PUNCH:
                     pap = PackAPunch(self, col, row)
                     self.interactables.add(pap)
+        # Adjacent DOOR_CLOSED tiles form one logical door.
+        self._build_door_groups(door_tile_set)
         self._player_spawn_set = player_spawn_set
+
+    def _build_door_groups(self, door_tiles: set[tuple[int, int]]):
+        visited: set[tuple[int, int]] = set()
+        for tile in door_tiles:
+            if tile in visited:
+                continue
+            # BFS to find all 4-connected door tiles.
+            component: list[tuple[int, int]] = []
+            queue = [tile]
+            while queue:
+                t = queue.pop()
+                if t in visited:
+                    continue
+                visited.add(t)
+                component.append(t)
+                tx, ty = t
+                for dx, dy in ((1, 0), (-1, 0), (0, 1), (0, -1)):
+                    n = (tx + dx, ty + dy)
+                    if n in door_tiles and n not in visited:
+                        queue.append(n)
+            cost = max(
+                (self.door_costs.get(t, DOOR_DEFAULT_COST) for t in component),
+                default=DOOR_DEFAULT_COST,
+            )
+            group = DoorGroup(self, cost)
+            for x, y in component:
+                door = Door(self, x, y, group)
+                self.interactables.add(door)
 
     def _spread_initial_player_positions(self):
         """When multiple players share a player_spawn tile, fan them out."""
@@ -338,7 +367,8 @@ class PlayState(State):
             if spot:
                 x, y = spot
                 self.grid[y][x] = TileType.DOOR_CLOSED
-                door = Door(self, x, y, DOOR_DEFAULT_COST)
+                group = DoorGroup(self, DOOR_DEFAULT_COST)
+                door = Door(self, x, y, group)
                 self.interactables.add(door)
         if not has_wall_buy:
             spot = take_one()
