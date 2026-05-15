@@ -40,6 +40,9 @@ class HostLobbyState(State):
 
         self.server = HostServer(port=DEFAULT_HOST_PORT, max_clients=MAX_PLAYERS - 1)
         self.server.start()
+        # Cleared when we hand the server off to HostPlayState; until then,
+        # on_exit() will shutdown the server so we don't leak listeners.
+        self._server_handed_off = False
 
         self.local_ip = get_local_ip()
         self.maps = map_loader.list_maps()
@@ -82,7 +85,6 @@ class HostLobbyState(State):
         fname = self.maps[self.selected_map_idx]
         data = map_loader.load(f"maps/{fname}")
         clients = self.server.connected_clients()
-        # Tell each client the game is starting + the map data.
         self.server.broadcast({
             "type": protocol.S_START_GAME,
             "map_name": fname,
@@ -92,6 +94,8 @@ class HostLobbyState(State):
             "wall_buy_weapons": data["wall_buy_weapons"],
             "perk_machine_perks": data["perk_machine_perks"],
         })
+        # Hand the server off — HostPlayState will own it from here on.
+        self._server_handed_off = True
         self.app.switch(
             "host_play",
             server=self.server,
@@ -102,6 +106,15 @@ class HostLobbyState(State):
             wall_buy_weapons=data["wall_buy_weapons"],
             perk_machine_perks=data["perk_machine_perks"],
         )
+
+    def on_exit(self):
+        # Shut the server down unless we're handing it off to host_play.
+        # Without this, every navigation (Cancel / ESC / back to menu) leaks
+        # a HostServer that keeps listening on port 50515 — and Windows'
+        # SO_REUSEADDR semantics let new connections land on the zombie
+        # server whose UI is no longer being drawn.
+        if not self._server_handed_off:
+            self.server.shutdown()
 
     def update(self):
         # Push lobby state to clients so they see who else has joined.

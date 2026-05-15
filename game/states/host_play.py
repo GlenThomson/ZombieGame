@@ -80,9 +80,15 @@ class HostPlayState(PlayState):
             pass
 
     def on_exit(self):
-        # If the host is leaving the play state, tell clients we're done so
-        # they fall back to menu rather than freezing.
+        # Tell clients we're done so they fall back to the menu instead of
+        # waiting on snapshots that will never come.
         try:
             self.server.broadcast({"type": protocol.S_GOODBYE})
+        except Exception:
+            pass
+        # Drop the listener so the port isn't held by a zombie server next
+        # time the player tries to host.
+        try:
+            self.server.shutdown()
         except Exception:
             pass
