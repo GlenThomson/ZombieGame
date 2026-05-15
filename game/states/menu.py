@@ -1,0 +1,89 @@
+"""Main menu screen. Redesigned: dark themed background, hover-able buttons,
+title + subtitle."""
+import pygame
+
+from settings import SCREEN_WIDTH, SCREEN_HEIGHT, MENU_TITLE, MENU_TEXT_DIM
+from game.states.base import State
+from game.ui.menu_widgets import Button, draw_menu_background
+
+
+class MenuState(State):
+    def on_enter(self, **kwargs):
+        title_font = pygame.font.Font(None, 130)
+        sub_font = pygame.font.Font(None, 32)
+        button_font = pygame.font.Font(None, 44)
+
+        self._title_surf = title_font.render("ZOMBIES", True, MENU_TITLE)
+        self._subtitle_surf = sub_font.render("the dead don't stop coming.", True, MENU_TEXT_DIM)
+        self._title_pos = (
+            SCREEN_WIDTH // 2 - self._title_surf.get_width() // 2,
+            120,
+        )
+        self._subtitle_pos = (
+            SCREEN_WIDTH // 2 - self._subtitle_surf.get_width() // 2,
+            220,
+        )
+
+        cx = SCREEN_WIDTH // 2
+        self.buttons = [
+            ("play",       Button("Play",       (cx, 380), button_font)),
+            ("mapmaker",   Button("Map Maker",  (cx, 460), button_font)),
+            ("controls",   Button("Controls",   (cx, 540), button_font)),
+            ("quit",       Button("Quit",       (cx, 620), button_font)),
+        ]
+        self.show_controls = False
+        self._controls_font = pygame.font.Font(None, 30)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEMOTION:
+            for _, b in self.buttons:
+                b.update_hover(event.pos)
+        if event.type == pygame.MOUSEBUTTONDOWN:
+            if self.show_controls:
+                self.show_controls = False
+                return
+            for action, button in self.buttons:
+                if button.clicked(event):
+                    self._dispatch(action)
+                    return
+
+    def _dispatch(self, action: str):
+        if action == "play":
+            self.app.switch("map_select")
+        elif action == "mapmaker":
+            self.app.switch("mapmaking")
+        elif action == "controls":
+            self.show_controls = True
+        elif action == "quit":
+            self.app.quit()
+
+    def draw(self):
+        draw_menu_background(self.surface, pygame.time.get_ticks())
+        self.surface.blit(self._title_surf, self._title_pos)
+        self.surface.blit(self._subtitle_surf, self._subtitle_pos)
+        for _, button in self.buttons:
+            button.draw(self.surface)
+        if self.show_controls:
+            self._draw_controls_overlay()
+        pygame.display.flip()
+
+    def _draw_controls_overlay(self):
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 200))
+        self.surface.blit(overlay, (0, 0))
+        lines = [
+            "WASD            move",
+            "Mouse           aim",
+            "Left click       shoot",
+            "G                throw grenade",
+            "1 / 2 / 3 / 4    switch weapon",
+            "R                reload",
+            "ESC              back to menu",
+            "",
+            "Click anywhere to dismiss",
+        ]
+        y = SCREEN_HEIGHT // 2 - len(lines) * 18
+        for line in lines:
+            surf = self._controls_font.render(line, True, (220, 220, 220))
+            self.surface.blit(surf, (SCREEN_WIDTH // 2 - 160, y))
+            y += 36
