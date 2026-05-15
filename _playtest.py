@@ -210,7 +210,62 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
     }
 
 
+def smoke_test_zombie_variants():
+    """Spawn one of each variant and tick a few frames per map. Catches
+    construction-time and update-time crashes per subclass."""
+    from game.world import map_loader
+    from game.entities.zombie_variants import Crawler, Runner, Hellhound
+
+    data = map_loader.load("maps/final.pkl")
+    app = App()
+    app.switch("play", grid=data["grid"], background=data["background_image_path"])
+    scene = app.state
+    spawn = scene.zombie_spawns[0] if scene.zombie_spawns else None
+    if spawn is None:
+        print("SKIP variant smoke: no spawns")
+        return True
+    for cls in (Crawler, Runner, Hellhound):
+        try:
+            z = cls(scene, spawn.x, spawn.y)
+            for _ in range(20):
+                z.update((scene.player.pos.x, scene.player.pos.y))
+            print(f"  variant OK: {cls.__name__}")
+        except Exception as e:
+            print(f"  variant FAIL: {cls.__name__}: {type(e).__name__}: {e}")
+            traceback.print_exc()
+            return False
+    return True
+
+
+def smoke_test_hellhound_round():
+    """Force RoundManager to round 5 and ensure tick() spawns Hellhounds."""
+    from game.world import map_loader
+    from game.entities.zombie_variants import Hellhound
+
+    data = map_loader.load("maps/final.pkl")
+    app = App()
+    app.switch("play", grid=data["grid"], background=data["background_image_path"])
+    scene = app.state
+    scene.round_manager.current_round = 5
+    scene.round_manager.zombies_to_spawn = 6
+    scene.round_manager.spawn_timer = 999
+    for _ in range(100):
+        scene.round_manager.tick(0.5)
+    spawned_hellhound = any(isinstance(z, Hellhound) for z in scene.zombies)
+    if not spawned_hellhound:
+        print(f"  hellhound round FAIL (saw types: {set(type(z).__name__ for z in scene.zombies)})")
+        return False
+    print("  hellhound round OK")
+    return True
+
+
 def main():
+    print("== variant smoke tests ==")
+    if not smoke_test_zombie_variants():
+        sys.exit(1)
+    if not smoke_test_hellhound_round():
+        sys.exit(1)
+    print()
     maps = sorted(f for f in os.listdir("maps") if f.endswith(".pkl"))
     failures = []
     for m in maps:
