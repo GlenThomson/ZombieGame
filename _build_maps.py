@@ -89,7 +89,7 @@ def build_nacht():
 
     map_loader.save(
         g,
-        background_image_path="assets/images/bg_wood.png",
+        background_image_path="assets/images/bg_cabin.jpeg",
         name="nacht",
         wall_buy_weapons=wall_buys,
     )
@@ -213,7 +213,7 @@ def build_verruckt():
 
     map_loader.save(
         g,
-        background_image_path="assets/images/bg_concrete.png",
+        background_image_path="assets/images/bg_warehouse.jpeg",
         name="verruckt",
         door_costs=door_costs,
         wall_buy_weapons=wall_buys,

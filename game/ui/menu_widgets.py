@@ -40,35 +40,48 @@ class Button:
         return event.type == pygame.MOUSEBUTTONDOWN and self.rect.collidepoint(event.pos)
 
 
-def draw_menu_background(surface, tick_ms: int = 0):
-    """Vertical-gradient dark red → near-black with a slow pulsing vignette so
-    the menu doesn't feel completely static."""
-    surface.fill(MENU_BG)
-    # vertical gradient overlay
-    band_h = SCREEN_HEIGHT // 80
-    for i in range(80):
-        t = i / 80
-        r = int(MENU_BG[0] + (MENU_BG_ACCENT[0] - MENU_BG[0]) * (1 - t) ** 2)
-        g = int(MENU_BG[1] + (MENU_BG_ACCENT[1] - MENU_BG[1]) * (1 - t) ** 2)
-        b = int(MENU_BG[2] + (MENU_BG_ACCENT[2] - MENU_BG[2]) * (1 - t) ** 2)
-        pygame.draw.rect(surface, (r, g, b), (0, i * band_h, SCREEN_WIDTH, band_h + 1))
+_menu_bg_cache: pygame.Surface | None = None
 
-    # vignette pulse
-    pulse = (math.sin(tick_ms / 800.0) + 1) / 2  # 0..1
-    vignette = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-    radial_alpha = int(80 + 40 * pulse)
-    pygame.draw.circle(
-        vignette,
-        (0, 0, 0, 0),
-        (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2),
-        SCREEN_WIDTH // 2,
-    )
-    # cheap edge darkening: fill black, then cut hole at center
+
+def _load_menu_bg() -> pygame.Surface | None:
+    """Load and cache the AI-generated menu background. Returns None if the
+    file is missing (caller falls back to gradient)."""
+    global _menu_bg_cache
+    if _menu_bg_cache is not None:
+        return _menu_bg_cache
+    import os
+    path = os.path.join("assets", "images", "menu_bg.jpeg")
+    if not os.path.isfile(path):
+        return None
+    img = pygame.image.load(path).convert()
+    _menu_bg_cache = pygame.transform.scale(img, (SCREEN_WIDTH, SCREEN_HEIGHT))
+    return _menu_bg_cache
+
+
+def draw_menu_background(surface, tick_ms: int = 0):
+    """Atmospheric horror background. Uses the AI-generated menu_bg if
+    present, falls back to a programmatic gradient otherwise. A subtle
+    pulsing dark vignette over the top either way."""
+    bg = _load_menu_bg()
+    if bg is not None:
+        surface.blit(bg, (0, 0))
+    else:
+        surface.fill(MENU_BG)
+        band_h = SCREEN_HEIGHT // 80
+        for i in range(80):
+            t = i / 80
+            r = int(MENU_BG[0] + (MENU_BG_ACCENT[0] - MENU_BG[0]) * (1 - t) ** 2)
+            g = int(MENU_BG[1] + (MENU_BG_ACCENT[1] - MENU_BG[1]) * (1 - t) ** 2)
+            b = int(MENU_BG[2] + (MENU_BG_ACCENT[2] - MENU_BG[2]) * (1 - t) ** 2)
+            pygame.draw.rect(surface, (r, g, b), (0, i * band_h, SCREEN_WIDTH, band_h + 1))
+
+    # Pulsing dark vignette so text reads against the busy background.
+    pulse = (math.sin(tick_ms / 800.0) + 1) / 2
+    radial_alpha = int(120 + 50 * pulse)
     edge = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
     edge.fill((0, 0, 0, radial_alpha))
     pygame.draw.circle(
-        edge,
-        (0, 0, 0, 0),
+        edge, (0, 0, 0, 0),
         (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2),
         int(SCREEN_WIDTH * 0.55),
     )
