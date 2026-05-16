@@ -22,6 +22,8 @@ from game.entities.effects import BloodSplatter
 
 vector = pygame.math.Vector2
 
+PATH_RETRY_MS = 600  # how often a zombie with an empty path retries A*
+
 
 class Zombie(pygame.sprite.Sprite):
     image_name = "zombie.png"
@@ -53,6 +55,9 @@ class Zombie(pygame.sprite.Sprite):
         self.is_chasing = False
         self.path = self._compute_path()
         self.path_index = 0
+        # When a path comes back empty (target unreachable / weird state)
+        # we retry every PATH_RETRY_MS so the zombie doesn't freeze forever.
+        self._last_path_attempt_ms = pygame.time.get_ticks()
 
     def _compute_path(self):
         # Prefer monkey bomb if active; else go to nearest player.
@@ -85,9 +90,19 @@ class Zombie(pygame.sprite.Sprite):
             self._aim(player_pos)
         else:
             if self.is_chasing:
+                # Just lost LOS — try to path to the player from here.
                 self.is_chasing = False
                 self.path = self._compute_path()
                 self.path_index = 0
+                self._last_path_attempt_ms = pygame.time.get_ticks()
+            elif not self.path:
+                # No path — retry periodically. The player may have moved or
+                # a door may have opened since we last tried.
+                now = pygame.time.get_ticks()
+                if now - self._last_path_attempt_ms >= PATH_RETRY_MS:
+                    self._last_path_attempt_ms = now
+                    self.path = self._compute_path()
+                    self.path_index = 0
             self._follow_path()
 
     def _follow_path(self):
