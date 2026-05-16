@@ -93,11 +93,16 @@ class Weapon:
         self._announce("shoot", self.definition.shoot_sound)
         for _ in range(self.definition.pellets_per_shot):
             self._fire_bullet()
+        # Muzzle flash at the barrel tip, not the player's centre. Matches
+        # the same offset used when spawning bullets in _fire_bullet so the
+        # flash always lines up with where the projectile leaves the gun.
         from game.entities.effects import MuzzleFlash
-        MuzzleFlash(
-            self.owner.scene,
-            (self.owner.rect.centerx, self.owner.rect.centery),
+        from settings import BARREL_OFFSET
+        muzzle_pos = (
+            vector(self.owner.rect.centerx, self.owner.rect.centery)
+            + BARREL_OFFSET.rotate(-self.owner.angle)
         )
+        MuzzleFlash(self.owner.scene, (muzzle_pos.x, muzzle_pos.y))
         if self.current_ammo <= 0:
             self.reload()
 
@@ -148,20 +153,27 @@ class Weapon:
         # input source — same logic for local + remote players, no camera math
         # here so this works regardless of whose camera we are).
         import math
-        rad = math.radians(self.owner.angle)
-        dx = math.cos(rad)
-        dy = -math.sin(rad)  # screen-y is inverted relative to math sin
-        direction = vector(dx, dy)
-        Bullet(
-            scene,
-            self.owner.rect.centerx,
-            self.owner.rect.centery,
-            direction,
-            self.owner.angle,
-            self.definition.bullet_spread,
-            self.definition.bullet_speed,
-            shooter_id=self.owner.player_id,
-            damage=self.damage,
-            penetration=self.penetration,
-            effect_kind=self.definition.effect_kind,
-        )
+        # Pack-a-Punched Ray Gun fires a 3-beam fan instead of a single
+        # bullet — the centre beam plus two flanking beams at +/- 8 degrees.
+        if self.is_packed and self.definition.effect_kind == "laser":
+            angle_offsets = (-8, 0, 8)
+        else:
+            angle_offsets = (0,)
+        for offset in angle_offsets:
+            beam_angle = self.owner.angle + offset
+            beam_rad = math.radians(beam_angle)
+            beam_dir = vector(math.cos(beam_rad), -math.sin(beam_rad))
+            Bullet(
+                scene,
+                self.owner.rect.centerx,
+                self.owner.rect.centery,
+                beam_dir,
+                beam_angle,
+                self.definition.bullet_spread,
+                self.definition.bullet_speed,
+                shooter_id=self.owner.player_id,
+                damage=self.damage,
+                penetration=self.penetration,
+                effect_kind=self.definition.effect_kind,
+                is_packed=self.is_packed,
+            )

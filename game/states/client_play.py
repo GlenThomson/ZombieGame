@@ -176,23 +176,30 @@ class ClientPlayState(State):
                 continue
             self._draw_pickup(p, cam_x, cam_y)
 
-        # Bullets
+        # Bullets — colour + size shifts when Pack-a-Punched.
         for b in snap.get("bullets", []):
             wx, wy = b["pos"]
             kind = b.get("kind", "normal")
+            pap = bool(b.get("pap", False))
             if kind == "laser":
-                base = pygame.Surface((14, 4), pygame.SRCALPHA)
-                pygame.draw.rect(base, (120, 255, 160), base.get_rect(), border_radius=2)
-                pygame.draw.line(base, (255, 255, 255), (1, 2), (12, 2), 1)
+                color = (255, 100, 255) if pap else (120, 255, 160)
+                w = 16 if pap else 14
+                h = 5 if pap else 4
+                base = pygame.Surface((w, h), pygame.SRCALPHA)
+                pygame.draw.rect(base, color, base.get_rect(), border_radius=2)
+                pygame.draw.line(base, (255, 255, 255), (1, h // 2), (w - 2, h // 2), 1)
                 rotated = pygame.transform.rotate(base, b.get("angle", 0.0))
                 rect = rotated.get_rect(center=(wx + cam_x, wy + cam_y))
                 self.surface.blit(rotated, rect)
-            elif kind == "chain":
-                pygame.draw.rect(self.surface, (140, 200, 255), (wx + cam_x - 1, wy + cam_y - 1, 3, 3))
-            elif kind == "blast":
-                pygame.draw.rect(self.surface, (255, 140, 0), (wx + cam_x - 1, wy + cam_y - 1, 3, 3))
             else:
-                pygame.draw.rect(self.surface, GOLD, (wx + cam_x - 1, wy + cam_y - 1, 3, 3))
+                size = 4 if pap else 3
+                if kind == "chain":
+                    color = (200, 240, 255) if pap else (140, 200, 255)
+                elif kind == "blast":
+                    color = (255, 240, 80) if pap else (255, 140, 0)
+                else:
+                    color = (255, 80, 255) if pap else GOLD
+                pygame.draw.rect(self.surface, color, (wx + cam_x - size // 2, wy + cam_y - size // 2, size, size))
 
         # Monkey bombs
         for m in snap.get("monkey_bombs", []):

@@ -9,32 +9,44 @@ from settings import BARREL_OFFSET, GOLD
 
 vector = pygame.math.Vector2
 
-# How many times a laser bullet ricochets before fizzling out.
+# How many times a laser bullet ricochets before fizzling out. PaP doubles it.
 LASER_MAX_BOUNCES = 3
-LASER_COLOR = (120, 255, 160)  # bright green
+LASER_PAP_MAX_BOUNCES = 6
+LASER_COLOR = (120, 255, 160)        # bright green
+LASER_PAP_COLOR = (255, 100, 255)    # vivid magenta when Pack-a-Punched
 LASER_CORE = (255, 255, 255)
+
+# Standard bullet colour by effect_kind, for both base + PaP variants.
+# PaP keeps the same hue family but more saturated / brighter so you can
+# read at a glance whether a flying round is upgraded.
+_BULLET_COLORS: dict[str, tuple] = {
+    "normal":     (GOLD,             (255, 80, 255)),     # gold -> magenta
+    "chain":      ((140, 200, 255),  (200, 240, 255)),    # softer/brighter blue
+    "blast":      ((255, 140, 0),    (255, 240, 80)),     # orange -> yellow
+}
 
 
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, scene, x: float, y: float, direction, angle_deg: float,
                  spread: float, speed: float, *,
                  shooter_id: int = 0, damage: int = 1, penetration: int = 1,
-                 effect_kind: str = "normal"):
+                 effect_kind: str = "normal", is_packed: bool = False):
         super().__init__(scene.all_sprites, scene.bullets)
         self.scene = scene
-        # Lasers get a longer, brighter sprite. Other bullets stay 3x3.
+        self.is_packed = is_packed
+        # Lasers get a longer, brighter sprite. Other bullets stay 3x3 but
+        # PaP'd ones are 4x4 so they're visibly chunkier.
         if effect_kind == "laser":
-            self.image = pygame.Surface((14, 4), pygame.SRCALPHA)
-            pygame.draw.rect(self.image, LASER_COLOR, self.image.get_rect(), border_radius=2)
-            pygame.draw.line(self.image, LASER_CORE, (1, 2), (12, 2), 1)
+            color = LASER_PAP_COLOR if is_packed else LASER_COLOR
+            self.image = pygame.Surface((16 if is_packed else 14, 5 if is_packed else 4), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, color, self.image.get_rect(), border_radius=2)
+            pygame.draw.line(self.image, LASER_CORE, (1, self.image.get_height() // 2),
+                             (self.image.get_width() - 2, self.image.get_height() // 2), 1)
         else:
-            self.image = pygame.Surface((3, 3))
-            if effect_kind == "chain":
-                self.image.fill((140, 200, 255))
-            elif effect_kind == "blast":
-                self.image.fill((255, 140, 0))
-            else:
-                self.image.fill(GOLD)
+            size = 4 if is_packed else 3
+            self.image = pygame.Surface((size, size))
+            base, packed = _BULLET_COLORS.get(effect_kind, _BULLET_COLORS["normal"])
+            self.image.fill(packed if is_packed else base)
         self.rect = self.image.get_rect()
 
         self.angle_rad = math.radians(angle_deg)
@@ -48,7 +60,10 @@ class Bullet(pygame.sprite.Sprite):
         self.damage = damage
         self.penetration = penetration
         self.effect_kind = effect_kind
-        self.bounces_remaining = LASER_MAX_BOUNCES if effect_kind == "laser" else 0
+        self.bounces_remaining = (
+            (LASER_PAP_MAX_BOUNCES if is_packed else LASER_MAX_BOUNCES)
+            if effect_kind == "laser" else 0
+        )
         # For lasers, we rotate the sprite so the beam points along its velocity.
         if effect_kind == "laser":
             self._render_rotated()
@@ -58,9 +73,12 @@ class Bullet(pygame.sprite.Sprite):
         return -math.degrees(math.atan2(self.vel.y, self.vel.x))
 
     def _render_rotated(self):
-        base = pygame.Surface((14, 4), pygame.SRCALPHA)
-        pygame.draw.rect(base, LASER_COLOR, base.get_rect(), border_radius=2)
-        pygame.draw.line(base, LASER_CORE, (1, 2), (12, 2), 1)
+        color = LASER_PAP_COLOR if self.is_packed else LASER_COLOR
+        w = 16 if self.is_packed else 14
+        h = 5 if self.is_packed else 4
+        base = pygame.Surface((w, h), pygame.SRCALPHA)
+        pygame.draw.rect(base, color, base.get_rect(), border_radius=2)
+        pygame.draw.line(base, LASER_CORE, (1, h // 2), (w - 2, h // 2), 1)
         self.image = pygame.transform.rotate(base, self.angle_deg)
         self.rect = self.image.get_rect(center=self.hit_box.center)
 

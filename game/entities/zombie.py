@@ -23,6 +23,8 @@ from game.entities.effects import BloodSplatter
 vector = pygame.math.Vector2
 
 PATH_RETRY_MS = 600  # how often a zombie with an empty path retries A*
+STUCK_CHECK_MS = 800  # how often we sample position to detect a stuck zombie
+STUCK_DISTANCE_PX = 6  # if it moved less than this in STUCK_CHECK_MS, it's stuck
 
 
 class Zombie(pygame.sprite.Sprite):
@@ -58,6 +60,11 @@ class Zombie(pygame.sprite.Sprite):
         # When a path comes back empty (target unreachable / weird state)
         # we retry every PATH_RETRY_MS so the zombie doesn't freeze forever.
         self._last_path_attempt_ms = pygame.time.get_ticks()
+        # Stuck detection: if the zombie barely moves over STUCK_CHECK_MS,
+        # blow away the cached path and force a fresh one (fixes hellhounds
+        # wedging in corners or against decor).
+        self._stuck_check_at_ms = pygame.time.get_ticks()
+        self._stuck_check_pos = vector(self.pos)
 
     def _compute_path(self):
         # Prefer monkey bomb if active; else go to nearest player.
@@ -74,6 +81,17 @@ class Zombie(pygame.sprite.Sprite):
         if self.health <= 0:
             self.kill()
             return
+
+        # Stuck detection — if we haven't moved meaningfully in STUCK_CHECK_MS,
+        # drop the path so the next path-retry kicks in immediately.
+        now_ms = pygame.time.get_ticks()
+        if now_ms - self._stuck_check_at_ms >= STUCK_CHECK_MS:
+            if self.pos.distance_to(self._stuck_check_pos) < STUCK_DISTANCE_PX:
+                self.path = []
+                self.path_index = 0
+                self._last_path_attempt_ms = 0  # force immediate retry
+            self._stuck_check_at_ms = now_ms
+            self._stuck_check_pos = vector(self.pos)
 
         if hasattr(scene_or_pos, "nearest_zombie_target"):
             tp = scene_or_pos.nearest_zombie_target(self.pos)

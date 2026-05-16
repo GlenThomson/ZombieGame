@@ -34,6 +34,7 @@ def build_snapshot(scene) -> dict:
                 "pos": (float(b.pos.x), float(b.pos.y)),
                 "kind": getattr(b, "effect_kind", "normal"),
                 "angle": float(b.angle_deg) if getattr(b, "effect_kind", "normal") == "laser" else 0.0,
+                "pap": bool(getattr(b, "is_packed", False)),
             }
             for b in scene.bullets
         ],

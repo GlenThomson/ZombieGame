@@ -102,6 +102,7 @@ class HostLobbyState(State):
             "host_play",
             server=self.server,
             lobby_clients=clients,
+            map_name=fname,
             grid=data["grid"],
             background=data["background_image_path"],
             door_costs=data["door_costs"],
