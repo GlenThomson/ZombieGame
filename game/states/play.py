@@ -767,6 +767,19 @@ class PlayState(State):
 
         self.blood_splatters.draw(self.surface)
 
+        # Walls + barb wire have real sprites now — draw them above the floor.
+        for sprite in self.walls:
+            # Doors / wall buys / windows / etc. are also in scene.walls but
+            # have their own draw step below, so skip them here.
+            if any(sprite in g for g in (self.doors, self.wall_buys, self.windows,
+                                          self.perk_machines, self.mystery_boxes,
+                                          self.pack_a_punch_machines,
+                                          self.power_switches)):
+                continue
+            self.surface.blit(sprite.image, self.camera.apply(sprite))
+        for sprite in self.barb_wire:
+            self.surface.blit(sprite.image, self.camera.apply(sprite))
+
         visible_interactables = (
             self.doors, self.wall_buys, self.windows,
             self.perk_machines, self.mystery_boxes, self.pack_a_punch_machines,

@@ -26,10 +26,16 @@ class ClientPlayState(State):
     """Active when the user joined a host. The host sends snapshots; this
     state only renders + forwards input."""
 
-    def on_enter(self, *, net_client, my_player_id: int, grid, background=None, **kwargs):
+    def on_enter(self, *, net_client, my_player_id: int, grid, background=None,
+                 floor_grid: list | None = None, wall_style: str = "brick", **kwargs):
         self.net_client = net_client
         self.my_player_id = my_player_id
         self.grid = grid
+        self.wall_style = wall_style
+        from game.world.tile import FloorType
+        self.floor_grid = floor_grid or [
+            [int(FloorType.CONCRETE) for _ in row] for row in grid
+        ]
 
         self.map_width = len(grid[0]) * TILE_SIZE
         self.map_height = len(grid) * TILE_SIZE
@@ -139,11 +145,14 @@ class ClientPlayState(State):
 
     def draw(self):
         self.surface.fill(WHITE)
-        if self.background_image is not None:
-            self.surface.blit(self.background_image, self.camera.camera.topleft)
-
         snap = self.latest_snapshot
         cam_x, cam_y = self.camera.camera.x, self.camera.camera.y
+
+        # Floor tiles + walls (static — derived from grid + floor_grid + wall_style).
+        self._draw_floor_grid(cam_x, cam_y)
+        self._draw_walls(cam_x, cam_y)
+        if self.background_image is not None and not any(any(r) for r in self.floor_grid):
+            self.surface.blit(self.background_image, self.camera.camera.topleft)
 
         # Blood under everything
         for b in snap.get("blood", []):
@@ -294,6 +303,44 @@ class ClientPlayState(State):
             img.blit(text, text.get_rect(center=(TILE_SIZE // 2, TILE_SIZE // 2)))
         wx, wy = p["pos"]
         self.surface.blit(img, (wx + cam_x, wy + cam_y))
+
+    def _draw_floor_grid(self, cam_x, cam_y):
+        from game.world.tile import FLOOR_SPRITES
+        rows = len(self.floor_grid)
+        cols = len(self.floor_grid[0]) if rows else 0
+        x0 = max(0, int(-cam_x) // TILE_SIZE)
+        y0 = max(0, int(-cam_y) // TILE_SIZE)
+        x1 = min(cols, x0 + SCREEN_WIDTH // TILE_SIZE + 2)
+        y1 = min(rows, y0 + SCREEN_HEIGHT // TILE_SIZE + 2)
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                png = FLOOR_SPRITES.get(int(self.floor_grid[y][x]))
+                if png is None:
+                    continue
+                self.surface.blit(
+                    assets.image(os.path.join("tiles", png)),
+                    (x * TILE_SIZE + cam_x, y * TILE_SIZE + cam_y),
+                )
+
+    def _draw_walls(self, cam_x, cam_y):
+        from game.world.tile import TileType, WALL_STYLES
+        wall_png = WALL_STYLES.get(self.wall_style, "wall_brick.png")
+        path = os.path.join("assets", "images", "tiles", wall_png)
+        if not os.path.isfile(path):
+            return
+        wall_img = assets.image(os.path.join("tiles", wall_png))
+        rows = len(self.grid)
+        cols = len(self.grid[0]) if rows else 0
+        x0 = max(0, int(-cam_x) // TILE_SIZE)
+        y0 = max(0, int(-cam_y) // TILE_SIZE)
+        x1 = min(cols, x0 + SCREEN_WIDTH // TILE_SIZE + 2)
+        y1 = min(rows, y0 + SCREEN_HEIGHT // TILE_SIZE + 2)
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                if int(self.grid[y][x]) == int(TileType.WALL):
+                    self.surface.blit(
+                        wall_img, (x * TILE_SIZE + cam_x, y * TILE_SIZE + cam_y),
+                    )
 
     def _sprite_for(self, kind: str, it: dict) -> str | None:
         """Map an interactable snapshot dict to its asset filename."""

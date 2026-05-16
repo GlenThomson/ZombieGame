@@ -123,6 +123,8 @@ class JoinLobbyState(State):
                     my_player_id=self.my_player_id,
                     grid=msg["grid"],
                     background=msg.get("background_image_path"),
+                    floor_grid=msg.get("floor_grid"),
+                    wall_style=msg.get("wall_style", "brick"),
                 )
                 return
             elif kind == protocol.S_GOODBYE:
