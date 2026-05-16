@@ -50,6 +50,23 @@ class RoundManager:
                 self.zombies_to_spawn -= 1
         elif len(self.scene.zombies) == 0:
             self._begin_next_round()
+        else:
+            self._maybe_make_end_round_crawler()
+
+    def _maybe_make_end_round_crawler(self):
+        """When all spawning is done and only the last zombie remains, slow
+        it to a crawl so the player has time to buy perks / refill ammo
+        before triggering the next round (CoD: 'last zombie crawler')."""
+        if self.zombies_to_spawn != 0:
+            return
+        if len(self.scene.zombies) != 1:
+            return
+        last = next(iter(self.scene.scene.zombies)) if False else next(iter(self.scene.zombies))
+        if getattr(last, "_end_round_crawler", False):
+            return
+        last._end_round_crawler = True
+        last.speed_base = 0.4
+        last.speed = 0.4
 
     def _spawn_one_zombie(self):
         if not self.scene.zombie_spawns:
@@ -76,8 +93,8 @@ class RoundManager:
         self.current_round += 1
         for p in self.scene.players:
             p.grenade_count = STARTING_GRENADES
-        self.round_text_countdown = 500
-        self.end_round_sound.play()
+        self.round_text_countdown = 700  # ~12 seconds at 60fps with the /2 fade
+        self.scene.announce_event("round_start", {"sound": "end_round_sound.mp3"})
         self.zombies_to_spawn = self._target_zombie_count(self.current_round)
         self.time_between_spawns = self.spawn_window_seconds / max(1, self.zombies_to_spawn)
 

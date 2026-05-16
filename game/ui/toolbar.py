@@ -56,7 +56,8 @@ class MapMakerToolbar:
             surface,
             ["delete", "wall", "barb wire", "zombie spawn", "player spawn",
              "door", "door open", "window", "wall buy", "perk machine",
-             "mystery box", "pack-a-punch"],
+             "mystery box", "pack-a-punch", "power switch",
+             "trap (flogger)", "trap (fire)"],
             self.text_font,
         )
         self.button_clicked = False

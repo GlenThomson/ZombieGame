@@ -1,9 +1,12 @@
 """Mystery Box: walk near, hold F, pay points, get a random weapon.
 
-The box has two states:
+States:
 - IDLE: shows the box closed, prompts to interact
 - SPINNING: cycles through weapon names visually for a short while,
-  then commits to one and adds it to the player's inventory
+  then commits to one (or to TEDDY)
+- READY: weapon name is settled, waiting for player to take it
+- TEDDY: box rolled a teddy bear (1-in-7-ish), plays a sound for 2s
+  and then relocates to a random eligible tile elsewhere on the map
 
 A simple visual placeholder is used until proper art lands."""
 import random
@@ -19,6 +22,10 @@ from settings import (
 from game.weapons.definitions import MYSTERY_BOX_POOL
 
 
+TEDDY_CHANCE = 0.14            # CoD: roughly 1 in 7
+TEDDY_DISPLAY_MS = 2000
+
+
 class MysteryBox(pygame.sprite.Sprite):
     def __init__(self, scene, x_tile: int, y_tile: int):
         super().__init__(scene.all_sprites, scene.walls, scene.mystery_boxes)
@@ -30,45 +37,74 @@ class MysteryBox(pygame.sprite.Sprite):
             x_tile * TILE_SIZE, y_tile * TILE_SIZE, TILE_SIZE, TILE_SIZE
         )
         self.font = pygame.font.Font(None, 14)
-        self.state = "idle"           # "idle" | "spinning" | "ready"
+        self.state = "idle"           # "idle" | "spinning" | "ready" | "teddy"
         self.spin_started_at = 0
         self.last_label_swap_at = 0
         self.current_label = "?"
         self.committed_weapon: str | None = None
+        self.teddy_until_ms = 0
         self._render()
 
     def _render(self):
         self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-        # Box body
         if self.state == "spinning":
             body = (200, 60, 0)
         elif self.state == "ready":
             body = (255, 215, 0)
+        elif self.state == "teddy":
+            body = (200, 120, 60)
         else:
             body = (60, 30, 10)
         pygame.draw.rect(self.image, body, self.image.get_rect())
         pygame.draw.rect(self.image, (255, 215, 0), self.image.get_rect(), 2)
-        text = self.font.render(self.current_label, True, (255, 255, 255))
+        label = "TEDDY" if self.state == "teddy" else self.current_label
+        text = self.font.render(label, True, (255, 255, 255))
         self.image.blit(text, text.get_rect(center=(TILE_SIZE // 2, TILE_SIZE // 2)))
 
     def update(self):
-        """Driven by PlayState each frame so the spin animation advances."""
-        if self.state != "spinning":
-            return
         now = pygame.time.get_ticks()
-        if now - self.last_label_swap_at >= MYSTERY_BOX_SPIN_FRAME_MS:
-            self.last_label_swap_at = now
-            self.current_label = random.choice(MYSTERY_BOX_POOL)[:5]
-            self._render()
-        if now - self.spin_started_at >= MYSTERY_BOX_SPIN_DURATION_MS:
-            self._commit_roll()
+        if self.state == "spinning":
+            if now - self.last_label_swap_at >= MYSTERY_BOX_SPIN_FRAME_MS:
+                self.last_label_swap_at = now
+                self.current_label = random.choice(MYSTERY_BOX_POOL)[:5]
+                self._render()
+            if now - self.spin_started_at >= MYSTERY_BOX_SPIN_DURATION_MS:
+                self._commit_roll()
+        elif self.state == "teddy":
+            if now >= self.teddy_until_ms:
+                self._relocate()
 
     def _commit_roll(self):
+        if random.random() < TEDDY_CHANCE:
+            self.state = "teddy"
+            self.teddy_until_ms = pygame.time.get_ticks() + TEDDY_DISPLAY_MS
+            self.scene.announce_event("teddy", {"sound": "kaboom.mp3"})
+            self._render()
+            return
         weapon = random.choice(MYSTERY_BOX_POOL)
         self.committed_weapon = weapon
         self.current_label = weapon[:5]
         self.state = "ready"
         self._render()
+
+    def _relocate(self):
+        """Box vanishes from this tile and reappears at a random empty tile
+        far from here. The grid + scene groups are updated so the new box
+        can be interacted with normally."""
+        from game.world.tile import TileType
+        scene = self.scene
+        old_x, old_y = self.x_tile, self.y_tile
+        if 0 <= old_y < len(scene.grid) and 0 <= old_x < len(scene.grid[0]):
+            scene.grid[old_y][old_x] = TileType.EMPTY
+        scene.interactables.discard(self)
+        self.kill()
+        new_spot = _find_relocation_spot(scene, exclude=(old_x, old_y))
+        if new_spot is None:
+            return
+        nx, ny = new_spot
+        scene.grid[ny][nx] = TileType.MYSTERY_BOX
+        new_box = MysteryBox(scene, nx, ny)
+        scene.interactables.add(new_box)
 
     # --- Interactable ---
 
@@ -78,14 +114,15 @@ class MysteryBox(pygame.sprite.Sprite):
     def get_prompt(self, player) -> str | None:
         if self.state == "spinning":
             return "rolling..."
+        if self.state == "teddy":
+            return "the box is leaving..."
         if self.state == "ready":
             return f"[{INTERACT_KEY_LABEL}] Take {self.committed_weapon}"
-        # idle
         prefix = "" if player.points >= self.cost else "(need points) "
         return f"{prefix}[{INTERACT_KEY_LABEL}] Mystery Box  -  {self.cost}"
 
     def interact(self, player) -> None:
-        if self.state == "spinning":
+        if self.state in ("spinning", "teddy"):
             return
         if self.state == "ready":
             if self.committed_weapon is None:
@@ -114,3 +151,24 @@ class MysteryBox(pygame.sprite.Sprite):
         self.last_label_swap_at = 0
         self.current_label = random.choice(MYSTERY_BOX_POOL)[:5]
         self._render()
+
+
+def _find_relocation_spot(scene, exclude: tuple[int, int]) -> tuple[int, int] | None:
+    from game.world.tile import TileType
+    rows = len(scene.grid)
+    cols = len(scene.grid[0])
+    candidates = []
+    for y in range(rows):
+        for x in range(cols):
+            if (x, y) == exclude:
+                continue
+            if scene.grid[y][x] != TileType.EMPTY:
+                continue
+            # Distance from the old position so the box actually moves.
+            d2 = (x - exclude[0]) ** 2 + (y - exclude[1]) ** 2
+            if d2 < 25:  # at least 5 tiles away
+                continue
+            candidates.append((x, y))
+    if not candidates:
+        return None
+    return random.choice(candidates)

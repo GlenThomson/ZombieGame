@@ -167,6 +167,14 @@ class ClientPlayState(State):
             wx, wy = b["pos"]
             pygame.draw.rect(self.surface, GOLD, (wx + cam_x - 1, wy + cam_y - 1, 3, 3))
 
+        # Monkey bombs
+        for m in snap.get("monkey_bombs", []):
+            wx, wy = m["pos"]
+            surf = pygame.Surface((24, 24), pygame.SRCALPHA)
+            pygame.draw.circle(surf, (220, 100, 160), (12, 12), 12)
+            pygame.draw.circle(surf, (60, 30, 50), (12, 12), 12, 2)
+            self.surface.blit(surf, surf.get_rect(center=(wx + cam_x, wy + cam_y)))
+
         # Grenades
         for g in snap.get("grenades", []):
             wx, wy = g["pos"]
@@ -337,6 +345,44 @@ class ClientPlayState(State):
             font = pygame.font.Font(None, 18)
             txt = font.render("PaP", True, (20, 18, 8))
             self.surface.blit(txt, txt.get_rect(center=rect.center))
+        elif kind == "trap":
+            active = it.get("active", False)
+            tkind = it.get("kind", "fire")
+            if tkind == "fire":
+                base = (180, 60, 0) if active else (60, 30, 10)
+                pygame.draw.rect(self.surface, base, rect)
+                if active:
+                    pygame.draw.polygon(self.surface, (255, 200, 0),
+                                        [(rect.x + 8, rect.bottom - 4),
+                                         (rect.centerx, rect.y + 4),
+                                         (rect.right - 8, rect.bottom - 4)])
+            else:
+                base = (90, 90, 90) if active else (40, 40, 40)
+                pygame.draw.rect(self.surface, base, rect)
+                if active:
+                    cx, cy = rect.center
+                    import math as _m
+                    t = pygame.time.get_ticks() / 100.0
+                    for offset in (0, _m.pi / 2):
+                        a = t + offset
+                        x2 = cx + int(_m.cos(a) * (rect.width // 2 - 4))
+                        y2 = cy + int(_m.sin(a) * (rect.height // 2 - 4))
+                        pygame.draw.line(self.surface, (220, 220, 220), (cx, cy), (x2, y2), 4)
+            pygame.draw.rect(self.surface, GOLD, rect, 2)
+        elif kind == "power_switch":
+            on = it.get("on", False)
+            body = (40, 70, 40) if on else (50, 50, 60)
+            pygame.draw.rect(self.surface, body, rect)
+            pygame.draw.rect(self.surface, (220, 220, 220), rect, 2)
+            lever = (255, 220, 80) if on else (180, 180, 180)
+            cx = rect.centerx
+            if on:
+                pygame.draw.line(self.surface, lever, (cx, rect.y + 8), (cx, rect.bottom - 8), 4)
+            else:
+                pygame.draw.line(self.surface, lever, (cx, rect.y + 8), (cx + 6, rect.bottom - 8), 4)
+            font = pygame.font.Font(None, 18)
+            self.surface.blit(font.render("PWR", True, (255, 255, 255)),
+                              (rect.x + 8, rect.bottom - 18))
 
     def _draw_hud(self):
         snap = self.latest_snapshot

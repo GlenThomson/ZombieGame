@@ -49,6 +49,10 @@ def build_snapshot(scene) -> dict:
             }
             for g in scene.grenades
         ],
+        "monkey_bombs": [
+            {"pos": (float(m.pos.x), float(m.pos.y))}
+            for m in scene.monkey_bombs
+        ],
         "blood": [
             {"pos": (float(b.original_pos.x), float(b.original_pos.y)), "alpha": int(b.alpha)}
             for b in scene.blood_splatters
@@ -78,6 +82,7 @@ def build_snapshot(scene) -> dict:
         "round_text_countdown": scene.round_manager.round_text_countdown,
         "damage_flash_alpha": scene.damage_flash_alpha,
         "points_multiplier": scene.points_multiplier,
+        "power_on": getattr(scene, "power_on", True),
     }
 
 
@@ -106,6 +111,7 @@ def _player_dict(player, scene) -> dict:
         "is_down": bool(player.is_down),
         "revive_progress_ms": int(player.revive_progress_ms),
         "grenades": int(player.grenade_count),
+        "monkey_bombs": int(player.monkey_bomb_count),
         "is_dead": bool(player.is_dead()),
     }
 
@@ -152,5 +158,19 @@ def _interactables_list(scene) -> list[dict]:
             "type": "pack_a_punch",
             "pos": (pap.rect.x, pap.rect.y),
             "cost": pap.cost,
+        })
+    for sw in scene.power_switches:
+        out.append({
+            "type": "power_switch",
+            "pos": (sw.rect.x, sw.rect.y),
+            "on": getattr(sw.scene, "power_on", False),
+        })
+    for t in scene.traps:
+        out.append({
+            "type": "trap",
+            "kind": t.kind,
+            "pos": (t.rect.x, t.rect.y),
+            "active": t.is_active,
+            "cost": t.cost,
         })
     return out

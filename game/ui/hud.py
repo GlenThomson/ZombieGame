@@ -78,6 +78,11 @@ class HUD:
     def _draw_grenade_count(self, surface, player):
         rendered = self.weapon_font.render(f"Grenades: {player.grenade_count}", True, MENU_TEXT)
         surface.blit(rendered, (SCREEN_WIDTH - 220, 100))
+        if player.monkey_bomb_count > 0:
+            r = self.weapon_font.render(
+                f"Monkey: {player.monkey_bomb_count}", True, (220, 100, 160),
+            )
+            surface.blit(r, (SCREEN_WIDTH - 220, 124))
 
     def _draw_perks(self, surface, player):
         perk_system = getattr(player.scene, "perk_system", None)

@@ -47,6 +47,13 @@ GRENADE_DURATION = 2000  # ms until explosion
 GRENADE_EXPLOSION_RADIUS_TILES = 6  # in player-rect-widths
 GRENADE_DAMAGE = 100
 
+# Monkey Bomb (alternative throwable — every zombie pathfinds to it, then it
+# explodes killing the entire crowd it attracted).
+MONKEY_BOMB_DURATION_MS = 5000
+MONKEY_BOMB_RADIUS_PX = 200
+MONKEY_BOMB_DAMAGE = 9999
+STARTING_MONKEY_BOMBS = 0   # CoD: only obtained from mystery box rolls / drops
+
 # Pickups
 PICKUP_DURATION_MS = 8000
 PICKUP_DROP_CHANCE = 100  # 1 in N

@@ -11,6 +11,7 @@ from settings import (
     BULLET_DAMAGE,
     STARTING_GRENADES,
     STARTING_POINTS,
+    STARTING_MONKEY_BOMBS,
 )
 from game import assets
 from game.systems.collision import resolve_wall_collision
@@ -55,17 +56,22 @@ class Player(pygame.sprite.Sprite):
         self._base_health = PLAYER_HEALTH
         self.health = self.max_health
         self.grenade_count = STARTING_GRENADES
+        self.monkey_bomb_count = STARTING_MONKEY_BOMBS
         self.points = STARTING_POINTS
 
         self.inventory = Inventory(self)
         self.inventory.add("Pistol")
         self.inventory.equip(0)
 
-        # Down + revive state (Tier 4 prep). When down, the player can't move
-        # or shoot; bleed_out_at is when they "die for real" if not revived.
+        # Down + revive state. When down the player can't move but CAN
+        # shoot a fixed last-stand pistol (M1911) while crawling.
         self.is_down: bool = False
         self.bleed_out_at_ms: int = 0
         self.revive_progress_ms: int = 0  # accumulated by reviver each frame
+        self.auto_revive_at_ms: int = 0   # set by Quick Revive on go_down
+        self.quick_revive_charges: int = 0
+        from game.weapons.weapon import Weapon
+        self.last_stand_weapon: Weapon = Weapon(self, "M1911")
 
     @property
     def max_health(self) -> float:
@@ -82,11 +88,17 @@ class Player(pygame.sprite.Sprite):
         """Caller can pass a pre-fetched InputState. If omitted, polls
         the input source. Scene passes the snapshot in so it can route
         scene-level events ("interact") elsewhere first."""
-        if self.is_down:
-            self._update_down_state()
-            return
         if snap is None:
             snap = self.input_source.snapshot()
+        if self.is_down:
+            # Crawling: no movement, but you can still aim + shoot the
+            # last-stand pistol (CoD authentic).
+            self._update_down_state()
+            self._aim(snap.mouse_pos)
+            self.last_stand_weapon.update()
+            if snap.buttons[0]:
+                self.last_stand_weapon.shoot()
+            return
         self._movement(snap)
         self._aim(snap.mouse_pos)
         weapon = self.weapon
@@ -97,11 +109,14 @@ class Player(pygame.sprite.Sprite):
             self.shoot()
 
     def _update_down_state(self):
-        # Crawl toward bleed-out; PlayState handles teammate revives by
-        # pumping `revive_progress_ms`. A revived player snaps back up.
-        if pygame.time.get_ticks() >= self.bleed_out_at_ms:
-            # No longer crawling — fully dead. Both fields must change so
-            # is_dead() (which gates is_down=False AND health<=0) trips.
+        now = pygame.time.get_ticks()
+        # Quick Revive auto-revive comes due before bleed-out.
+        if self.auto_revive_at_ms and now >= self.auto_revive_at_ms:
+            self.quick_revive_charges -= 1
+            self.auto_revive_at_ms = 0
+            self.revive()
+            return
+        if now >= self.bleed_out_at_ms:
             self.is_down = False
             self.health = 0
 
@@ -111,6 +126,9 @@ class Player(pygame.sprite.Sprite):
         self.bleed_out_at_ms = pygame.time.get_ticks() + PLAYER_BLEED_OUT_MS
         self.revive_progress_ms = 0
         self.health = 1  # don't quite kill them; PlayState reads is_down
+        # Quick Revive: auto-revive in 5 seconds, consumes one charge.
+        if self.quick_revive_charges > 0:
+            self.auto_revive_at_ms = pygame.time.get_ticks() + 5000
 
     def revive(self):
         self.is_down = False
@@ -122,6 +140,8 @@ class Player(pygame.sprite.Sprite):
         for ev in snap.events:
             if ev == "grenade":
                 self.throw_grenade()
+            elif ev == "monkey":
+                self.throw_monkey_bomb()
             elif ev == "reload":
                 if self.weapon is not None:
                     self.weapon.reload()
@@ -205,4 +225,18 @@ class Player(pygame.sprite.Sprite):
         grenade = Grenade(self.scene, self.pos.x, self.pos.y, self.angle)
         grenade.thrower_id = self.player_id
         self.grenade_count -= 1
+        return True
+
+    def throw_monkey_bomb(self):
+        if self.is_down or self.monkey_bomb_count <= 0:
+            return False
+        from game.entities.monkey_bomb import MonkeyBomb
+        # Place a few tiles in front of the player.
+        import math
+        rad = math.radians(self.angle)
+        offset = 60
+        x = self.pos.x + offset * math.cos(rad)
+        y = self.pos.y + offset * -math.sin(rad)
+        MonkeyBomb(self.scene, x, y, thrower_id=self.player_id)
+        self.monkey_bomb_count -= 1
         return True

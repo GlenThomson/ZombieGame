@@ -26,6 +26,13 @@ class Perk:
 
 
 PERKS: dict[str, Perk] = {
+    "Quick Revive": Perk(
+        name="Quick Revive", cost=500, icon_color=(180, 220, 255),
+        # No modifier stack entries — custom behaviour applied in
+        # PerkSystem._apply (3 self-revive charges in SP, faster teammate
+        # revives in MP).
+        modifiers=(),
+    ),
     "Juggernog": Perk(
         name="Juggernog", cost=2500, icon_color=(220, 0, 0),
         modifiers=(("max_health", 0.0, 2.5),),
@@ -79,9 +86,13 @@ class PerkSystem:
         for stat, additive, multiplier in perk.modifiers:
             self.player.modifiers.add(stat, perk.name, additive=additive, multiplier=multiplier)
         self._owned.append(perk)
-        # Juggernog tops you off when bought (CoD behavior).
         if perk.name == "Juggernog":
+            # Tops you off to the new max (CoD behavior).
             self.player.health = self.player.max_health
+        elif perk.name == "Quick Revive":
+            # 3 self-revive charges. In MP, also speeds up reviving teammates
+            # (handled in PlayState._handle_revives).
+            self.player.quick_revive_charges = 3
 
     def clear_all(self):
         for perk in self._owned:

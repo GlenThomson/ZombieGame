@@ -236,6 +236,9 @@ class MapMakingState(State):
             9: ((220, 0, 0), (220, 220, 220)),     # perk machine (Juggernog red)
             10: ((60, 30, 10), (255, 215, 0)),     # mystery box
             11: ((200, 160, 0), (255, 230, 80)),   # pack-a-punch
+            12: ((50, 50, 60), (255, 220, 80)),    # power switch
+            13: ((60, 60, 60), (200, 200, 200)),   # flogger trap
+            14: ((180, 60, 0), (255, 130, 0)),     # fire trap
         }
         for y, row in enumerate(self.grid):
             for x, tile in enumerate(row):

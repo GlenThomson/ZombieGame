@@ -16,6 +16,9 @@ class TileType(IntEnum):
     PERK_MACHINE = 9
     MYSTERY_BOX = 10
     PACK_A_PUNCH = 11
+    POWER_SWITCH = 12
+    TRAP_FLOGGER = 13
+    TRAP_FIRE = 14
 
     @classmethod
     def is_blocking(cls, value: int) -> bool:
@@ -36,4 +39,6 @@ _BLOCKING_TILES: frozenset[int] = frozenset({
     TileType.PERK_MACHINE,
     TileType.MYSTERY_BOX,
     TileType.PACK_A_PUNCH,
+    TileType.POWER_SWITCH,
+    # Traps don't block — they're floor tiles
 })

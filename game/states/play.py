@@ -41,6 +41,8 @@ from game.entities.window import Window
 from game.entities.perk_machine import PerkMachine
 from game.entities.mystery_box import MysteryBox
 from game.entities.pack_a_punch import PackAPunch
+from game.entities.power_switch import PowerSwitch
+from game.entities.trap import Trap
 from game.stats.perks import PerkSystem, PERKS
 from game.world.tile import TileType
 from game.ui.hud import HUD
@@ -69,8 +71,15 @@ class PlayState(State):
         self.perk_machines = pygame.sprite.Group()
         self.mystery_boxes = pygame.sprite.Group()
         self.pack_a_punch_machines = pygame.sprite.Group()
+        self.power_switches = pygame.sprite.Group()
+        self.traps = pygame.sprite.Group()
+        self.monkey_bombs = pygame.sprite.Group()
         self.muzzle_flashes = pygame.sprite.Group()
         self.floating_texts = pygame.sprite.Group()
+        self.power_on: bool = False
+        # Things zombies should target instead of the player while active
+        # (e.g. live monkey bombs). Highest-priority first.
+        self.zombie_attractors: list = []
         self.zombie_spawns: list[ZombieSpawn] = []
         self.interactables: set = set()
         self.interaction_prompt: str | None = None
@@ -126,6 +135,10 @@ class PlayState(State):
         self._populate_from_grid(grid)
         self._ensure_spawns_exist()
         self._auto_seed_tier1_tiles_if_missing()
+        # Maps without a power switch default to "power on" so existing
+        # maps don't suddenly lock out perks/PaP.
+        if not any(self.power_switches):
+            self.power_on = True
 
         # Spread spawn positions slightly so multiple players don't sit on
         # the same tile if the map only has one player_spawn.
@@ -137,7 +150,7 @@ class PlayState(State):
             self.background_image = None
 
         self.hud = HUD()
-        self.round_text_font = pygame.font.Font(None, 100)
+        self.round_text_font = pygame.font.Font(None, 180)
 
     # ---- backwards-compat alias for code that pre-dates multi-player ----
 
@@ -169,6 +182,16 @@ class PlayState(State):
             return None
         ax, ay = (pos.x, pos.y) if hasattr(pos, "x") else pos[:2]
         return min(targets, key=lambda p: (p.pos.x - ax) ** 2 + (p.pos.y - ay) ** 2)
+
+    def nearest_zombie_target(self, pos):
+        """Returns the position vector zombies should aim at: a live monkey
+        bomb if there is one, else the nearest standing player."""
+        if self.zombie_attractors:
+            attractor = self.zombie_attractors[0]
+            apos = attractor.pos
+            return type(apos)(apos.x, apos.y)
+        target = self.nearest_player_to(pos)
+        return target.pos if target is not None else None
 
     # ----- map population -----
 
@@ -209,6 +232,15 @@ class PlayState(State):
                 elif tile == TileType.PACK_A_PUNCH:
                     pap = PackAPunch(self, col, row)
                     self.interactables.add(pap)
+                elif tile == TileType.POWER_SWITCH:
+                    sw = PowerSwitch(self, col, row)
+                    self.interactables.add(sw)
+                elif tile == TileType.TRAP_FLOGGER:
+                    t = Trap(self, col, row, "flogger")
+                    self.interactables.add(t)
+                elif tile == TileType.TRAP_FIRE:
+                    t = Trap(self, col, row, "fire")
+                    self.interactables.add(t)
         # Adjacent DOOR_CLOSED tiles form one logical door.
         self._build_door_groups(door_tile_set)
         self._player_spawn_set = player_spawn_set
@@ -421,6 +453,7 @@ class PlayState(State):
                 return
             mapping = {
                 pygame.K_g: "grenade",
+                pygame.K_t: "monkey",
                 pygame.K_r: "reload",
                 pygame.K_f: "interact",
                 pygame.K_1: "switch:0",
@@ -485,10 +518,13 @@ class PlayState(State):
         self.grenades.update()
         self.muzzle_flashes.update()
         self.floating_texts.update()
+        self.monkey_bombs.update()
         for window in list(self.windows):
             window.update_against_zombies()
         for box in list(self.mystery_boxes):
             box.update()
+        for trap in list(self.traps):
+            trap.update_kills()
 
         if self.damage_flash_alpha > 0:
             self.damage_flash_alpha = max(0, self.damage_flash_alpha - 14)
@@ -527,7 +563,10 @@ class PlayState(State):
                     # Local: peek at the held keys without disturbing events.
                     holding = pygame.key.get_pressed()[pygame.K_f]
                 if holding:
-                    downed_p.revive_progress_ms += dt
+                    # Quick Revive doubles your revive speed on teammates.
+                    reviver_perks = self.perk_system_by_player.get(reviver.player_id)
+                    mult = 2.0 if reviver_perks and reviver_perks.has("Quick Revive") else 1.0
+                    downed_p.revive_progress_ms += int(dt * mult)
                     advanced = True
                     break
             if not advanced and downed_p.revive_progress_ms > 0:
@@ -646,6 +685,7 @@ class PlayState(State):
         visible_interactables = (
             self.doors, self.wall_buys, self.windows,
             self.perk_machines, self.mystery_boxes, self.pack_a_punch_machines,
+            self.power_switches, self.traps,
         )
         for group in visible_interactables:
             for sprite in group:
@@ -726,10 +766,16 @@ class PlayState(State):
         self.surface.blit(flash, (0, 0))
 
     def _draw_round_text(self):
+        # Decay slower so the announcement lingers; cap alpha at 255.
         self.round_manager.round_text_countdown -= 1
-        text = self.round_text_font.render(
-            f"Round {self.round_manager.current_round}", True, (255, 0, 0)
-        )
-        text.set_alpha(self.round_manager.round_text_countdown)
+        alpha = min(255, max(0, self.round_manager.round_text_countdown // 2))
+        msg = f"Round {self.round_manager.current_round}"
+        # Drop shadow underneath for legibility against the background.
+        shadow = self.round_text_font.render(msg, True, (0, 0, 0))
+        shadow.set_alpha(alpha)
+        srect = shadow.get_rect(center=(SCREEN_WIDTH // 2 + 4, SCREEN_HEIGHT // 2 + 4))
+        self.surface.blit(shadow, srect)
+        text = self.round_text_font.render(msg, True, (190, 0, 0))
+        text.set_alpha(alpha)
         rect = text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2))
         self.surface.blit(text, rect)

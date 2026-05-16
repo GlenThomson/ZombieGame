@@ -95,6 +95,14 @@ def _carpenter(scene, collector=None):
         collector.points += 200
 
 
+@effect("monkey_bombs", weight=0.6, icon=("MB", (220, 100, 160)))
+def _monkey_bombs(scene, collector=None):
+    """Grants 4 monkey bombs to the collecting player."""
+    scene.announce_event("monkey_pickup", {"sound": "instant_kill.mp3"})
+    if collector is not None:
+        collector.monkey_bomb_count = min(4, collector.monkey_bomb_count + 4)
+
+
 @effect("fire_sale", weight=0.6, icon=("FS", (220, 60, 200)))
 def _fire_sale(scene, collector=None):
     """Mystery boxes drop to 10 points for 30 seconds."""

@@ -38,6 +38,8 @@ class PackAPunch(pygame.sprite.Sprite):
         weapon = player.weapon
         if weapon is None:
             return None
+        if not getattr(self.scene, "power_on", True):
+            return "Pack-a-Punch (power off)"
         if weapon.is_packed:
             return f"{weapon.name} already packed"
         affordable = player.points >= self.cost
@@ -45,6 +47,8 @@ class PackAPunch(pygame.sprite.Sprite):
         return f"{prefix}[{INTERACT_KEY_LABEL}] Pack-a-Punch  -  {self.cost}"
 
     def interact(self, player) -> None:
+        if not getattr(self.scene, "power_on", True):
+            return
         weapon = player.weapon
         if weapon is None or weapon.is_packed:
             return

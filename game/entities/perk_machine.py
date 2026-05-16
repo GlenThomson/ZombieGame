@@ -40,6 +40,8 @@ class PerkMachine(pygame.sprite.Sprite):
         ps = self.scene.perk_system_by_player.get(player.player_id)
         if ps is None:
             return None
+        if not getattr(self.scene, "power_on", True):
+            return f"{self.perk.name} (power off)"
         if ps.has(self.perk.name):
             return f"{self.perk.name} (owned)"
         affordable = player.points >= self.perk.cost
@@ -47,6 +49,8 @@ class PerkMachine(pygame.sprite.Sprite):
         return f"{prefix}[{INTERACT_KEY_LABEL}] {self.perk.name}  -  {self.perk.cost}"
 
     def interact(self, player) -> None:
+        if not getattr(self.scene, "power_on", True):
+            return
         ps = self.scene.perk_system_by_player.get(player.player_id)
         if ps is None:
             return

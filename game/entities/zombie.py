@@ -55,10 +55,12 @@ class Zombie(pygame.sprite.Sprite):
         self.path_index = 0
 
     def _compute_path(self):
-        target = self.scene.nearest_player_to(self.pos)
-        if target is None:
+        # Prefer monkey bomb if active; else go to nearest player.
+        target_pos = self.scene.nearest_zombie_target(self.pos)
+        if target_pos is None:
             return []
-        return find_path(self.scene.grid, self.pos, target.tile_position())
+        target_tile = target_pos // TILE_SIZE
+        return find_path(self.scene.grid, self.pos, target_tile)
 
     def tile_position(self):
         return self.pos // TILE_SIZE
@@ -68,14 +70,12 @@ class Zombie(pygame.sprite.Sprite):
             self.kill()
             return
 
-        # Compatibility: zombie.update() may be called with a (x, y) tuple
-        # (legacy path) or with the scene object (multi-player path).
-        if hasattr(scene_or_pos, "nearest_player_to"):
-            target = scene_or_pos.nearest_player_to(self.pos)
-            player_pos = (target.pos.x, target.pos.y) if target is not None else (self.pos.x, self.pos.y)
+        if hasattr(scene_or_pos, "nearest_zombie_target"):
+            tp = scene_or_pos.nearest_zombie_target(self.pos)
+            player_pos = (tp.x, tp.y) if tp is not None else (self.pos.x, self.pos.y)
         elif scene_or_pos is None:
-            target = self.scene.nearest_player_to(self.pos)
-            player_pos = (target.pos.x, target.pos.y) if target is not None else (self.pos.x, self.pos.y)
+            tp = self.scene.nearest_zombie_target(self.pos)
+            player_pos = (tp.x, tp.y) if tp is not None else (self.pos.x, self.pos.y)
         else:
             player_pos = scene_or_pos
 
@@ -144,10 +144,10 @@ class Zombie(pygame.sprite.Sprite):
         return False
 
     def _is_close_to_player(self) -> bool:
-        target = self.scene.nearest_player_to(self.pos)
-        if target is None:
+        tp = self.scene.nearest_zombie_target(self.pos)
+        if tp is None:
             return False
-        return self.pos.distance_to(target.pos) < ZOMBIE_CHASE_DISTANCE
+        return self.pos.distance_to(tp) < ZOMBIE_CHASE_DISTANCE
 
     def _has_line_of_sight(self, target_pos) -> bool:
         start = self.pos
