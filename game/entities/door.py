@@ -37,11 +37,16 @@ class Door(pygame.sprite.Sprite):
         self.group = group
         group.tiles.append(self)
 
-        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE))
-        self.image.fill((110, 60, 20))
-        for y in range(0, TILE_SIZE, 8):
-            pygame.draw.line(self.image, (70, 35, 10), (0, y), (TILE_SIZE, y), 1)
-        pygame.draw.rect(self.image, GOLD, self.image.get_rect(), 2)
+        import os
+        from game import assets
+        if os.path.isfile(os.path.join("assets", "images", "door_closed.png")):
+            self.image = assets.image("door_closed.png").copy()
+        else:
+            self.image = pygame.Surface((TILE_SIZE, TILE_SIZE))
+            self.image.fill((110, 60, 20))
+            for y in range(0, TILE_SIZE, 8):
+                pygame.draw.line(self.image, (70, 35, 10), (0, y), (TILE_SIZE, y), 1)
+            pygame.draw.rect(self.image, GOLD, self.image.get_rect(), 2)
         self.rect = self.image.get_rect(topleft=(x_tile * TILE_SIZE, y_tile * TILE_SIZE))
 
     @property
@@ -59,7 +64,6 @@ class Door(pygame.sprite.Sprite):
         return f"{prefix}[{INTERACT_KEY_LABEL}] Open Door  -  {self.group.cost}"
 
     def interact(self, player) -> None:
-        if player.points < self.group.cost:
+        if not player.spend(self.group.cost):
             return
-        player.points -= self.group.cost
         self.group.open()

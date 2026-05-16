@@ -76,9 +76,8 @@ class PerkSystem:
         perk = PERKS.get(perk_name)
         if perk is None:
             return False
-        if self.player.points < perk.cost:
+        if not self.player.spend(perk.cost):
             return False
-        self.player.points -= perk.cost
         self._apply(perk)
         return True
 

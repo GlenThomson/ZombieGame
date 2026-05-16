@@ -58,6 +58,10 @@ class Player(pygame.sprite.Sprite):
         self.grenade_count = STARTING_GRENADES
         self.monkey_bomb_count = STARTING_MONKEY_BOMBS
         self.points = STARTING_POINTS
+        # Stats shown on the Game Over scoreboard.
+        self.kills: int = 0
+        self.headshot_kills: int = 0
+        self.points_spent: int = 0
 
         self.inventory = Inventory(self)
         self.inventory.add("Pistol")
@@ -201,6 +205,17 @@ class Player(pygame.sprite.Sprite):
         if self.is_down:
             return
         self.health -= amount
+
+    def spend(self, amount: int) -> bool:
+        """Charge `amount` points; returns True if the player had enough.
+        Tracks total spent for the end-of-game scoreboard."""
+        if amount <= 0:
+            return True
+        if self.points < amount:
+            return False
+        self.points -= amount
+        self.points_spent += amount
+        return True
 
     def heal_to_full(self):
         self.health = self.max_health

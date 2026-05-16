@@ -13,11 +13,19 @@ vector = pygame.math.Vector2
 class Bullet(pygame.sprite.Sprite):
     def __init__(self, scene, x: float, y: float, direction, angle_deg: float,
                  spread: float, speed: float, *,
-                 shooter_id: int = 0, damage: int = 1, penetration: int = 1):
+                 shooter_id: int = 0, damage: int = 1, penetration: int = 1,
+                 effect_kind: str = "normal"):
         super().__init__(scene.all_sprites, scene.bullets)
         self.scene = scene
         self.image = pygame.Surface((3, 3))
-        self.image.fill(GOLD)
+        # Chain bullets are blue; blast bullets are orange — easier to read
+        # which weapon a flying bullet came from at a glance.
+        if effect_kind == "chain":
+            self.image.fill((140, 200, 255))
+        elif effect_kind == "blast":
+            self.image.fill((255, 140, 0))
+        else:
+            self.image.fill(GOLD)
         self.rect = self.image.get_rect()
 
         self.angle_rad = math.radians(angle_deg)
@@ -30,6 +38,7 @@ class Bullet(pygame.sprite.Sprite):
         self.shooter_id = shooter_id
         self.damage = damage
         self.penetration = penetration
+        self.effect_kind = effect_kind
 
     def update(self):
         self.pos += self.vel

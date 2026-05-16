@@ -295,49 +295,65 @@ class ClientPlayState(State):
         wx, wy = p["pos"]
         self.surface.blit(img, (wx + cam_x, wy + cam_y))
 
+    def _sprite_for(self, kind: str, it: dict) -> str | None:
+        """Map an interactable snapshot dict to its asset filename."""
+        if kind == "door":
+            return "door_closed.png"
+        if kind == "wall_buy":
+            return "wall_buy_generic.png"
+        if kind == "window":
+            planks = max(0, min(4, int(it.get("planks", 4))))
+            return f"window_{planks}.png"
+        if kind == "perk_machine":
+            slug = str(it.get("perk", "")).replace(" ", "_").lower()
+            return f"perk_{slug}.png"
+        if kind == "mystery_box":
+            return f"mystery_box_{it.get('state', 'idle')}.png"
+        if kind == "pack_a_punch":
+            return "pack_a_punch.png"
+        if kind == "power_switch":
+            return "power_switch_on.png" if it.get("on") else "power_switch_off.png"
+        if kind == "trap":
+            return f"trap_{it.get('kind', 'fire')}_{'on' if it.get('active') else 'off'}.png"
+        return None
+
     def _draw_interactable(self, it: dict, cam_x, cam_y):
-        # Draw as a colored box matching the host's renderer.
         wx, wy = it["pos"]
         rect = pygame.Rect(wx + cam_x, wy + cam_y, TILE_SIZE, TILE_SIZE)
         kind = it["type"]
+
+        png = self._sprite_for(kind, it)
+        if png is not None and os.path.isfile(os.path.join("assets", "images", png)):
+            img = assets.image(png)
+            self.surface.blit(img, rect.topleft)
+            # Overlays specific to certain types
+            if kind == "wall_buy":
+                font = pygame.font.Font(None, 12)
+                label = font.render(str(it.get("weapon", ""))[:6], True, GOLD)
+                self.surface.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - 2)))
+            elif kind == "mystery_box" and it.get("label"):
+                font = pygame.font.Font(None, 14)
+                label = font.render(str(it["label"]), True, (0, 0, 0))
+                self.surface.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - 4)))
+            return
+
+        # Fallbacks (legacy colored rendering)
         if kind == "door":
             pygame.draw.rect(self.surface, (110, 60, 20), rect)
             pygame.draw.rect(self.surface, GOLD, rect, 2)
         elif kind == "wall_buy":
             pygame.draw.rect(self.surface, (40, 40, 50), rect)
             pygame.draw.rect(self.surface, GOLD, rect, 2)
-            font = pygame.font.Font(None, 16)
-            txt = font.render(str(it.get("weapon", ""))[:6], True, GOLD)
-            self.surface.blit(txt, (rect.x + 4, rect.centery - 6))
         elif kind == "window":
             pygame.draw.rect(self.surface, (60, 60, 80), rect)
             pygame.draw.rect(self.surface, (180, 180, 200), rect, 2)
-            planks = it.get("planks", 4)
-            slot_h = TILE_SIZE / 4
-            for i in range(planks):
-                pygame.draw.rect(
-                    self.surface, (160, 110, 50),
-                    (rect.x + 3, rect.y + int(i * slot_h) + 2,
-                     TILE_SIZE - 6, int(slot_h) - 2),
-                )
         elif kind == "perk_machine":
             color = tuple(it.get("color", (220, 0, 0)))
-            pygame.draw.rect(self.surface, (20, 20, 28), rect)
-            inner = rect.inflate(-8, -8)
-            pygame.draw.rect(self.surface, color, inner)
+            pygame.draw.rect(self.surface, color, rect)
             pygame.draw.rect(self.surface, (220, 220, 220), rect, 2)
-            font = pygame.font.Font(None, 28)
-            txt = font.render(it.get("perk", "P")[:1], True, (0, 0, 0))
-            self.surface.blit(txt, txt.get_rect(center=rect.center))
         elif kind == "mystery_box":
-            state = it.get("state", "idle")
-            body = (200, 60, 0) if state == "spinning" else \
-                   (255, 215, 0) if state == "ready" else (60, 30, 10)
-            pygame.draw.rect(self.surface, body, rect)
+            pygame.draw.rect(self.surface, (60, 30, 10), rect)
             pygame.draw.rect(self.surface, (255, 215, 0), rect, 2)
-            font = pygame.font.Font(None, 14)
-            txt = font.render(str(it.get("label", "?")), True, (255, 255, 255))
-            self.surface.blit(txt, txt.get_rect(center=rect.center))
         elif kind == "pack_a_punch":
             pygame.draw.rect(self.surface, (20, 18, 8), rect)
             pygame.draw.rect(self.surface, (200, 160, 0), rect.inflate(-8, -8))

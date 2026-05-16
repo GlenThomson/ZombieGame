@@ -35,7 +35,10 @@ class Weapon:
 
     @property
     def name(self) -> str:
-        return self.definition.name + (" PaP" if self.is_packed else "")
+        if not self.is_packed:
+            return self.definition.name
+        from game.weapons.definitions import PACKED_NAMES
+        return PACKED_NAMES.get(self.definition.name, f"{self.definition.name} PaP")
 
     @property
     def magazine_size(self) -> int:
@@ -160,4 +163,5 @@ class Weapon:
             shooter_id=self.owner.player_id,
             damage=self.damage,
             penetration=self.penetration,
+            effect_kind=self.definition.effect_kind,
         )

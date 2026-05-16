@@ -42,6 +42,26 @@ class MuzzleFlash(pygame.sprite.Sprite):
             self.kill()
 
 
+class LightningArc:
+    """Short-lived blue jagged line drawn between two world points. Stored
+    in scene.lightning_arcs (a plain list, not a sprite group) so PlayState
+    can iterate them once per frame."""
+    LIFETIME_MS = 180
+
+    def __init__(self, p1: tuple[float, float], p2: tuple[float, float]):
+        self.p1 = p1
+        self.p2 = p2
+        self.spawn_time = pygame.time.get_ticks()
+
+    def alive(self) -> bool:
+        return pygame.time.get_ticks() - self.spawn_time < self.LIFETIME_MS
+
+    def alpha(self) -> int:
+        elapsed = pygame.time.get_ticks() - self.spawn_time
+        ratio = max(0.0, 1.0 - elapsed / self.LIFETIME_MS)
+        return int(255 * ratio)
+
+
 class FloatingText(pygame.sprite.Sprite):
     """Drifts up and fades. Used for "+50" point pops near killed zombies."""
     LIFETIME_MS = 700

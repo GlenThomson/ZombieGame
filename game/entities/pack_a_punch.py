@@ -21,15 +21,15 @@ class PackAPunch(pygame.sprite.Sprite):
         self._render()
 
     def _render(self):
-        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-        # Dramatic gold-and-black machine
-        pygame.draw.rect(self.image, (20, 18, 8), self.image.get_rect())
-        inner = self.image.get_rect().inflate(-8, -8)
-        pygame.draw.rect(self.image, (200, 160, 0), inner)
-        pygame.draw.rect(self.image, (255, 230, 80), self.image.get_rect(), 3)
-        font = pygame.font.Font(None, 18)
-        text = font.render("PaP", True, (20, 18, 8))
-        self.image.blit(text, text.get_rect(center=(TILE_SIZE // 2, TILE_SIZE // 2)))
+        import os
+        from game import assets
+        png = "pack_a_punch.png"
+        if os.path.isfile(os.path.join("assets", "images", png)):
+            self.image = assets.image(png).copy()
+        else:
+            self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, (200, 160, 0), self.image.get_rect())
+            pygame.draw.rect(self.image, (255, 230, 80), self.image.get_rect(), 3)
 
     def get_world_pos(self) -> tuple[float, float]:
         return (self.rect.centerx, self.rect.centery)
@@ -52,7 +52,6 @@ class PackAPunch(pygame.sprite.Sprite):
         weapon = player.weapon
         if weapon is None or weapon.is_packed:
             return
-        if player.points < self.cost:
+        if not player.spend(self.cost):
             return
-        player.points -= self.cost
         weapon.apply_pack_a_punch()

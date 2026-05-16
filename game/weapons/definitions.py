@@ -15,6 +15,7 @@ class WeaponDef:
     reserve_max: int = 0       # total spare ammo carried; 0 means "infinite"
     pellets_per_shot: int = 1  # >1 for shotguns
     shoot_sound: str = "pistol_shot.mp3"
+    effect_kind: str = "normal"  # "normal" | "chain" | "blast"
 
 
 WEAPON_DEFS: dict[str, WeaponDef] = {
@@ -34,8 +35,8 @@ WEAPON_DEFS: dict[str, WeaponDef] = {
     # Wonder weapons (mystery box only). Wunderwaffe = single very lethal
     # bolt with high penetration. Thundergun = wide cone like a giant
     # shotgun.
-    "Wunderwaffe": WeaponDef("Wunderwaffe", bullet_speed=45, bullet_spread=0, fire_rate=1.0, damage=200, penetration=12, magazine_size=3, reload_time=4.5, reserve_max=15, shoot_sound="pistol_shot.mp3"),
-    "Thundergun":  WeaponDef("Thundergun",  bullet_speed=22, bullet_spread=35, fire_rate=0.8, damage=80, penetration=10, magazine_size=2, reload_time=4.0, reserve_max=10, pellets_per_shot=20, shoot_sound="shotgun_sound.mp3"),
+    "Wunderwaffe": WeaponDef("Wunderwaffe", bullet_speed=45, bullet_spread=0, fire_rate=1.0, damage=200, penetration=1,  magazine_size=3, reload_time=4.5, reserve_max=15, shoot_sound="pistol_shot.mp3",   effect_kind="chain"),
+    "Thundergun":  WeaponDef("Thundergun",  bullet_speed=22, bullet_spread=35, fire_rate=0.8, damage=80, penetration=10, magazine_size=2, reload_time=4.0, reserve_max=10, pellets_per_shot=20, shoot_sound="shotgun_sound.mp3", effect_kind="blast"),
 }
 
 
@@ -53,3 +54,20 @@ MYSTERY_BOX_POOL: tuple[str, ...] = (
     "Wunderwaffe",
     "Thundergun",
 )
+
+
+# CoD's iconic Pack-a-Punch name per base weapon. Used by Weapon.name when
+# the weapon is_packed.
+PACKED_NAMES: dict[str, str] = {
+    "Pistol":      "Mustang & Sally",
+    "Shotgun":     "Gut Shot",
+    "AK74u":       "AK74fu2",
+    "Galil":       "Lamentation",
+    "SMG":         "Beat-zerker",
+    "LMG":         "Hammer of Thor",
+    "Sniper":      "The Armageddon",
+    "Ray Gun":     "Porter's X2",
+    "Wunderwaffe": "Wunderwaffe DG-3 JZ",
+    "Thundergun":  "Zeus Cannon",
+    "M1911":       "Mustang & Sally",
+}

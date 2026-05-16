@@ -18,21 +18,16 @@ class PowerSwitch(pygame.sprite.Sprite):
         self._render()
 
     def _render(self):
-        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-        body = (50, 50, 60) if not self.scene.power_on else (40, 70, 40)
-        pygame.draw.rect(self.image, body, self.image.get_rect())
-        pygame.draw.rect(self.image, (220, 220, 220), self.image.get_rect(), 2)
-        # Lever (drawn down when on, up when off)
-        lever_color = (255, 220, 80) if self.scene.power_on else (180, 180, 180)
-        cx = TILE_SIZE // 2
-        if self.scene.power_on:
-            pygame.draw.line(self.image, lever_color, (cx, 8), (cx, TILE_SIZE - 8), 4)
+        import os
+        from game import assets
+        png = "power_switch_on.png" if self.scene.power_on else "power_switch_off.png"
+        if os.path.isfile(os.path.join("assets", "images", png)):
+            self.image = assets.image(png).copy()
         else:
-            pygame.draw.line(self.image, lever_color, (cx, 8), (cx + 6, TILE_SIZE - 8), 4)
-        # Label
-        font = pygame.font.Font(None, 18)
-        txt = font.render("PWR", True, (255, 255, 255))
-        self.image.blit(txt, txt.get_rect(midbottom=(cx, TILE_SIZE - 2)))
+            self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+            body = (50, 50, 60) if not self.scene.power_on else (40, 70, 40)
+            pygame.draw.rect(self.image, body, self.image.get_rect())
+            pygame.draw.rect(self.image, (220, 220, 220), self.image.get_rect(), 2)
 
     def get_world_pos(self) -> tuple[float, float]:
         return (self.rect.centerx, self.rect.centery)

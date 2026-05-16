@@ -14,6 +14,63 @@ class HUD:
         self.ammo_big_font = pygame.font.Font(None, 56)
         self.ammo_reserve_font = pygame.font.Font(None, 28)
 
+    def draw_minimap(self, surface, scene):
+        """Top-right corner mini-map. Walls dark, machines coloured, players
+        gold, zombies red. Whole map fits in a 160x140 square."""
+        from game.world.tile import TileType
+        rows = len(scene.grid)
+        cols = len(scene.grid[0])
+        if rows == 0 or cols == 0:
+            return
+        max_w, max_h = 180, 140
+        scale = min(max_w / cols, max_h / rows)
+        if scale < 1:
+            scale = max(1, scale)
+        tx = int(cols * scale)
+        ty = int(rows * scale)
+        x0 = SCREEN_WIDTH - tx - 10
+        y0 = SCREEN_HEIGHT - ty - 200
+        # Background
+        bg = pygame.Surface((tx + 8, ty + 8), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, 160))
+        surface.blit(bg, (x0 - 4, y0 - 4))
+        # Tile colors
+        TILE_COLORS = {
+            int(TileType.WALL):         (60, 60, 60),
+            int(TileType.DOOR_CLOSED):  (110, 60, 20),
+            int(TileType.DOOR_OPEN):    (35, 25, 15),
+            int(TileType.WINDOW):       (140, 100, 50),
+            int(TileType.WALL_BUY):     (120, 120, 80),
+            int(TileType.PERK_MACHINE): (200, 60, 60),
+            int(TileType.MYSTERY_BOX):  (255, 215, 0),
+            int(TileType.PACK_A_PUNCH): (255, 230, 80),
+            int(TileType.POWER_SWITCH): (180, 220, 60),
+            int(TileType.TRAP_FIRE):    (255, 90, 30),
+            int(TileType.TRAP_FLOGGER): (180, 180, 180),
+            int(TileType.ZOMBIE_SPAWN): (140, 0, 0),
+        }
+        for y, row in enumerate(scene.grid):
+            for x, t in enumerate(row):
+                color = TILE_COLORS.get(int(t))
+                if color is None:
+                    continue
+                pygame.draw.rect(
+                    surface, color,
+                    (x0 + int(x * scale), y0 + int(y * scale),
+                     max(1, int(scale)), max(1, int(scale))),
+                )
+        # Players + zombies on top
+        from settings import TILE_SIZE
+        for p in scene.players:
+            px = x0 + int((p.pos.x / TILE_SIZE) * scale)
+            py = y0 + int((p.pos.y / TILE_SIZE) * scale)
+            pygame.draw.circle(surface, GOLD if p is scene.local_player else (60, 160, 255),
+                               (px, py), 3)
+        for z in scene.zombies:
+            zx = x0 + int((z.pos.x / TILE_SIZE) * scale)
+            zy = y0 + int((z.pos.y / TILE_SIZE) * scale)
+            pygame.draw.circle(surface, (255, 50, 50), (zx, zy), 2)
+
     def draw(self, surface, scene):
         # Round + kills (bottom-left)
         round_text = self.label_font.render(
@@ -33,6 +90,7 @@ class HUD:
         self._draw_grenade_count(surface, scene.player)
         self._draw_perks(surface, scene.player)
         self._draw_interaction_prompt(surface, scene)
+        self.draw_minimap(surface, scene)
 
     def _draw_health_bar(self, surface, player):
         bar_w_max = 150
@@ -63,10 +121,23 @@ class HUD:
         sub_rect = sub_surf.get_rect(bottomright=(SCREEN_WIDTH - 30, SCREEN_HEIGHT - 12))
         surface.blit(sub_surf, sub_rect)
 
-        # Weapon name + reload tag along the top-right.
-        text = weapon.name + ("  (reloading)" if weapon.is_reloading else "")
-        rendered = self.weapon_font.render(text, True, MENU_TEXT)
+        # Weapon name along the top-right.
+        rendered = self.weapon_font.render(weapon.name, True, MENU_TEXT)
         surface.blit(rendered, (SCREEN_WIDTH - 220, 40))
+
+        # Reload progress bar — visible only when reloading.
+        if weapon.is_reloading:
+            now = pygame.time.get_ticks()
+            elapsed = now - weapon.reload_started_at
+            total = max(1, weapon.reload_time * 1000)
+            progress = max(0.0, min(1.0, elapsed / total))
+            bw = 220
+            bh = 8
+            bx = SCREEN_WIDTH - 30 - bw
+            by = SCREEN_HEIGHT - 90
+            pygame.draw.rect(surface, (40, 40, 40), (bx, by, bw, bh))
+            pygame.draw.rect(surface, GOLD, (bx, by, int(bw * progress), bh))
+            pygame.draw.rect(surface, MENU_TEXT, (bx, by, bw, bh), 1)
 
         slot_x = SCREEN_WIDTH - 220
         for i, slot in enumerate(player.inventory.slots):

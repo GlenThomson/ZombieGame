@@ -24,6 +24,7 @@ from game.weapons.definitions import MYSTERY_BOX_POOL
 
 TEDDY_CHANCE = 0.14            # CoD: roughly 1 in 7
 TEDDY_DISPLAY_MS = 2000
+FORCED_TEDDY_AFTER_USES = 5    # nth roll always teddies regardless of RNG
 
 
 class MysteryBox(pygame.sprite.Sprite):
@@ -46,20 +47,24 @@ class MysteryBox(pygame.sprite.Sprite):
         self._render()
 
     def _render(self):
-        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-        if self.state == "spinning":
-            body = (200, 60, 0)
-        elif self.state == "ready":
-            body = (255, 215, 0)
-        elif self.state == "teddy":
-            body = (200, 120, 60)
+        import os
+        from game import assets
+        png = f"mystery_box_{self.state}.png"
+        path = os.path.join("assets", "images", png)
+        if os.path.isfile(path):
+            self.image = assets.image(png).copy()
+            # When spinning / ready, overlay the current label so the player
+            # sees the weapon name they're rolling.
+            if self.state in ("spinning", "ready") and self.current_label:
+                label_surf = self.font.render(self.current_label, True, (0, 0, 0))
+                self.image.blit(
+                    label_surf,
+                    label_surf.get_rect(midbottom=(TILE_SIZE // 2, TILE_SIZE - 4)),
+                )
         else:
-            body = (60, 30, 10)
-        pygame.draw.rect(self.image, body, self.image.get_rect())
-        pygame.draw.rect(self.image, (255, 215, 0), self.image.get_rect(), 2)
-        label = "TEDDY" if self.state == "teddy" else self.current_label
-        text = self.font.render(label, True, (255, 255, 255))
-        self.image.blit(text, text.get_rect(center=(TILE_SIZE // 2, TILE_SIZE // 2)))
+            self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, (60, 30, 10), self.image.get_rect())
+            pygame.draw.rect(self.image, (255, 215, 0), self.image.get_rect(), 2)
 
     def update(self):
         now = pygame.time.get_ticks()
@@ -75,11 +80,17 @@ class MysteryBox(pygame.sprite.Sprite):
                 self._relocate()
 
     def _commit_roll(self):
-        if random.random() < TEDDY_CHANCE:
+        # Track per-scene mystery-box usage so the box reliably moves after
+        # FORCED_TEDDY_AFTER_USES rolls — CoD-faithful "the box left" moment.
+        scene = self.scene
+        scene.mystery_box_uses = getattr(scene, "mystery_box_uses", 0) + 1
+        forced = scene.mystery_box_uses >= FORCED_TEDDY_AFTER_USES
+        if forced or random.random() < TEDDY_CHANCE:
             self.state = "teddy"
             self.teddy_until_ms = pygame.time.get_ticks() + TEDDY_DISPLAY_MS
             self.scene.announce_event("teddy", {"sound": "kaboom.mp3"})
             self._render()
+            scene.mystery_box_uses = 0  # reset on relocation
             return
         weapon = random.choice(MYSTERY_BOX_POOL)
         self.committed_weapon = weapon
@@ -143,9 +154,8 @@ class MysteryBox(pygame.sprite.Sprite):
             self._render()
             return
         # idle → start a spin
-        if player.points < self.cost:
+        if not player.spend(self.cost):
             return
-        player.points -= self.cost
         self.state = "spinning"
         self.spin_started_at = pygame.time.get_ticks()
         self.last_label_swap_at = 0

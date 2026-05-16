@@ -1,7 +1,9 @@
 """A perk-cola machine. Stand near, press F, pay points → perk."""
+import os
 import pygame
 
 from settings import TILE_SIZE, INTERACT_KEY_LABEL
+from game import assets
 from game.stats.perks import PERKS
 
 
@@ -18,18 +20,16 @@ class PerkMachine(pygame.sprite.Sprite):
         self._render()
 
     def _render(self):
-        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-        # Machine body
-        pygame.draw.rect(self.image, (20, 20, 28), self.image.get_rect())
-        # Perk-tinted strip down the middle (vending machine front)
-        strip = pygame.Rect(8, 6, TILE_SIZE - 16, TILE_SIZE - 12)
-        pygame.draw.rect(self.image, self.perk.icon_color, strip)
-        pygame.draw.rect(self.image, (220, 220, 220), self.image.get_rect(), 2)
-        # First letter as a label
-        font = pygame.font.Font(None, 28)
-        ch = self.perk.name[0]
-        text = font.render(ch, True, (0, 0, 0))
-        self.image.blit(text, text.get_rect(center=(TILE_SIZE // 2, TILE_SIZE // 2)))
+        slug = self.perk.name.replace(" ", "_").lower()
+        png = f"perk_{slug}.png"
+        if os.path.isfile(os.path.join("assets", "images", png)):
+            self.image = assets.image(png).copy()
+        else:
+            self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+            pygame.draw.rect(self.image, (20, 20, 28), self.image.get_rect())
+            pygame.draw.rect(self.image, self.perk.icon_color,
+                              pygame.Rect(8, 6, TILE_SIZE - 16, TILE_SIZE - 12))
+            pygame.draw.rect(self.image, (220, 220, 220), self.image.get_rect(), 2)
 
     # --- Interactable ---
 

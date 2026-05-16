@@ -23,12 +23,20 @@ class WallBuy(pygame.sprite.Sprite):
         self.buy_cost = WALL_BUY_BUY_COST
         self.ammo_cost = WALL_BUY_AMMO_COST
 
-        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE))
-        self.image.fill((40, 40, 50))
-        pygame.draw.rect(self.image, GOLD, self.image.get_rect(), 2)
-        font = pygame.font.Font(None, 16)
-        text = font.render(weapon_name[:6], True, GOLD)
-        self.image.blit(text, (4, TILE_SIZE // 2 - 6))
+        import os
+        from game import assets
+        if os.path.isfile(os.path.join("assets", "images", "wall_buy_generic.png")):
+            self.image = assets.image("wall_buy_generic.png").copy()
+            font = pygame.font.Font(None, 12)
+            label = font.render(weapon_name[:6], True, GOLD)
+            self.image.blit(label, label.get_rect(midbottom=(TILE_SIZE // 2, TILE_SIZE - 2)))
+        else:
+            self.image = pygame.Surface((TILE_SIZE, TILE_SIZE))
+            self.image.fill((40, 40, 50))
+            pygame.draw.rect(self.image, GOLD, self.image.get_rect(), 2)
+            font = pygame.font.Font(None, 16)
+            text = font.render(weapon_name[:6], True, GOLD)
+            self.image.blit(text, (4, TILE_SIZE // 2 - 6))
         self.rect = self.image.get_rect(topleft=(x_tile * TILE_SIZE, y_tile * TILE_SIZE))
 
     def get_world_pos(self) -> tuple[float, float]:
@@ -45,13 +53,12 @@ class WallBuy(pygame.sprite.Sprite):
 
     def interact(self, player) -> None:
         if not self._player_owns_weapon(player):
-            if player.points < self.buy_cost:
+            if not player.spend(self.buy_cost):
                 return
             if not player.inventory.add(self.weapon_name):
                 player.inventory.replace_equipped(self.weapon_name)
-            player.points -= self.buy_cost
         else:
-            if player.points < self.ammo_cost:
+            if not player.spend(self.ammo_cost):
                 return
             for slot in player.inventory.slots:
                 if slot is not None and slot.definition.name == self.weapon_name:
@@ -59,7 +66,6 @@ class WallBuy(pygame.sprite.Sprite):
                     slot.reserve_ammo = slot.reserve_max
                     slot.is_reloading = False
                     break
-            player.points -= self.ammo_cost
 
     def _player_owns_weapon(self, player) -> bool:
         # Compare against the underlying definition name so a Pack-a-Punched

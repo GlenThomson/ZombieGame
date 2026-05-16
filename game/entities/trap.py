@@ -32,32 +32,21 @@ class Trap(pygame.sprite.Sprite):
         return pygame.time.get_ticks() < self.active_until_ms
 
     def _render(self):
+        import os
+        from game import assets
+        png = (
+            f"trap_{self.kind}_{'on' if self.is_active else 'off'}.png"
+        )
+        if os.path.isfile(os.path.join("assets", "images", png)):
+            self.image = assets.image(png).copy()
+            return
+        # Fallback (no PNG available).
         self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
         if self.kind == "fire":
             base = (180, 60, 0) if self.is_active else (60, 30, 10)
-            pygame.draw.rect(self.image, base, self.image.get_rect())
-            if self.is_active:
-                # crude flame layers
-                pygame.draw.polygon(
-                    self.image, (255, 200, 0),
-                    [(8, TILE_SIZE - 4), (TILE_SIZE // 2, 4), (TILE_SIZE - 8, TILE_SIZE - 4)],
-                )
-                pygame.draw.polygon(
-                    self.image, (255, 100, 0),
-                    [(12, TILE_SIZE - 4), (TILE_SIZE // 2, 12), (TILE_SIZE - 12, TILE_SIZE - 4)],
-                )
-        else:  # flogger
+        else:
             base = (90, 90, 90) if self.is_active else (40, 40, 40)
-            pygame.draw.rect(self.image, base, self.image.get_rect())
-            cx = TILE_SIZE // 2
-            if self.is_active:
-                # rotating arms approximation (static cross — animation later)
-                t = pygame.time.get_ticks() / 100.0
-                for offset in (0, math.pi / 2):
-                    a = t + offset
-                    x2 = cx + int(math.cos(a) * (TILE_SIZE // 2 - 4))
-                    y2 = cx + int(math.sin(a) * (TILE_SIZE // 2 - 4))
-                    pygame.draw.line(self.image, (220, 220, 220), (cx, cx), (x2, y2), 4)
+        pygame.draw.rect(self.image, base, self.image.get_rect())
         pygame.draw.rect(self.image, GOLD, self.image.get_rect(), 2)
 
     def update_kills(self):
@@ -96,9 +85,8 @@ class Trap(pygame.sprite.Sprite):
             return
         if not getattr(self.scene, "power_on", True):
             return
-        if player.points < self.cost:
+        if not player.spend(self.cost):
             return
-        player.points -= self.cost
         self.active_until_ms = pygame.time.get_ticks() + TRAP_DURATION_MS
         self.activator_id = player.player_id
         self.scene.announce_event("trap_on", {"sound": "kaboom.mp3"})

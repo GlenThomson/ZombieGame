@@ -29,6 +29,7 @@ class Pickup(pygame.sprite.Sprite):
         self.kind = kind
         self.image = self._load_image(kind)
         self.rect = self.image.get_rect(topleft=(x, y))
+        self._anchor_y = self.rect.y   # for bob animation
         self.spawn_time = pygame.time.get_ticks()
         self.flicker_period_ms = 1000
         self.next_flicker_at = self.spawn_time + self.flicker_period_ms
@@ -42,11 +43,15 @@ class Pickup(pygame.sprite.Sprite):
         return _placeholder_icon(*icon)
 
     def update(self):
+        import math
         now = pygame.time.get_ticks()
         elapsed = now - self.spawn_time
         if elapsed > PICKUP_DURATION_MS:
             self.kill()
             return
+
+        # Floating bob.
+        self.rect.y = self._anchor_y + int(math.sin(now / 200) * 3)
 
         # Speed up flicker as expiry approaches.
         time_left = PICKUP_DURATION_MS - elapsed

@@ -29,11 +29,15 @@ class Window(pygame.sprite.Sprite):
         self._render()
 
     def _render(self):
+        import os
+        from game import assets
+        png = f"window_{self.planks}.png"
+        if os.path.isfile(os.path.join("assets", "images", png)):
+            self.image = assets.image(png).copy()
+            return
         self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-        # Window frame
         pygame.draw.rect(self.image, (60, 60, 80), self.image.get_rect(), 0)
         pygame.draw.rect(self.image, (180, 180, 200), self.image.get_rect(), 2)
-        # Plank stripes proportional to how many remain
         if self.planks > 0:
             slot_h = TILE_SIZE / WINDOW_PLANK_COUNT
             for i in range(self.planks):

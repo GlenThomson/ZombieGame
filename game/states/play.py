@@ -80,6 +80,8 @@ class PlayState(State):
         # Things zombies should target instead of the player while active
         # (e.g. live monkey bombs). Highest-priority first.
         self.zombie_attractors: list = []
+        self.lightning_arcs: list = []
+        self.mystery_box_uses: int = 0
         self.zombie_spawns: list[ZombieSpawn] = []
         self.interactables: set = set()
         self.interaction_prompt: str | None = None
@@ -94,6 +96,7 @@ class PlayState(State):
         self.timed_effects: dict[str, tuple[int, callable]] = {}
         self.points_multiplier = 1.0
         self.damage_flash_alpha = 0
+        self.paused = False           # P key toggles in SP only
 
         # Map dimensions + camera (camera follows the local player or midpoint).
         self.map_width = len(grid[0]) * TILE_SIZE
@@ -451,6 +454,10 @@ class PlayState(State):
             if event.key == pygame.K_ESCAPE:
                 self.app.switch("menu")
                 return
+            if event.key == pygame.K_p and len(self.players) == 1:
+                # Single-player only — pause is meaningless in MP.
+                self.paused = not self.paused
+                return
             mapping = {
                 pygame.K_g: "grenade",
                 pygame.K_t: "monkey",
@@ -482,13 +489,24 @@ class PlayState(State):
         )
 
     def update(self):
+        if self.paused:
+            return
         # End-of-game: all players dead.
         if not self.alive_players():
-            local = self.local_player
             self.app.switch(
                 "game_over",
                 final_round=self.round_manager.current_round,
                 final_kills=self.kill_count,
+                player_stats=[
+                    {
+                        "name": p.name,
+                        "kills": p.kills,
+                        "headshots": p.headshot_kills,
+                        "points_spent": p.points_spent,
+                        "perks": [pk.name for pk in self.perk_system_by_player[p.player_id].owned()],
+                    }
+                    for p in self.players
+                ],
             )
             return
 
@@ -582,14 +600,13 @@ class PlayState(State):
         self.interaction_prompt = focused.get_prompt(self.local_player) if focused else None
 
     def _sprite_interactions(self):
-        from game.entities.effects import FloatingText
+        from game.entities.effects import FloatingText, LightningArc
         mult = self.points_multiplier
         for zombie in self.zombies:
             for bullet in self.bullets:
                 if not zombie.rect.colliderect(bullet.hit_box):
                     continue
                 bullet.hit_count += 1
-                # Headshot: bullet entered the top quarter of the zombie's rect.
                 is_headshot = bullet.hit_box.centery < zombie.rect.top + zombie.rect.height * 0.25
                 damage = bullet.damage * (HEADSHOT_DAMAGE_MULT if is_headshot else 1.0)
                 was_alive = zombie.health > 0
@@ -599,6 +616,9 @@ class PlayState(State):
                     if zombie.health <= 0:
                         pts = int(POINTS_PER_KILL * mult)
                         shooter.points += pts
+                        shooter.kills += 1
+                        if is_headshot:
+                            shooter.headshot_kills += 1
                         color = (255, 90, 90) if is_headshot else (255, 215, 0)
                         label = f"+{pts}!" if is_headshot else f"+{pts}"
                         FloatingText(self, zombie.pos, label, color=color)
@@ -606,6 +626,10 @@ class PlayState(State):
                         base = POINTS_PER_HIT + (POINTS_PER_HEADSHOT_HIT if is_headshot else 0)
                         pts = int(base * mult)
                         shooter.points += pts
+                if bullet.effect_kind == "chain":
+                    self._chain_lightning_from(zombie, damage, shooter, mult)
+                elif bullet.effect_kind == "blast":
+                    self._blast_knockback(zombie)
                 if bullet.hit_count >= bullet.penetration:
                     bullet.kill()
 
@@ -619,16 +643,60 @@ class PlayState(State):
                     if player is self.local_player:
                         self.damage_flash_alpha = min(180, self.damage_flash_alpha + 60)
                     if player.health <= 0 and not player.is_down:
-                        # If there's anyone left to revive, go down. Else die.
                         any_standing_others = any(
                             p is not player and not p.is_down and not p.is_dead()
                             for p in self.players
                         )
                         if any_standing_others:
                             player.go_down()
-                        # else: leave health <= 0 → is_dead() → game over check
                 else:
                     zombie.speed = zombie.speed_base
+        # decay lightning arcs
+        self.lightning_arcs = [a for a in self.lightning_arcs if a.alive()]
+
+    def _chain_lightning_from(self, origin_zombie, damage: float, shooter, mult: float):
+        """Wunderwaffe: chain to up to 4 more zombies within 180px."""
+        from game.entities.effects import FloatingText, LightningArc
+        chained: set = {id(origin_zombie)}
+        prev = origin_zombie
+        for _ in range(4):
+            best = None
+            best_d2 = 180 * 180
+            for z in self.zombies:
+                if id(z) in chained or z.health <= 0:
+                    continue
+                d2 = (z.pos.x - prev.pos.x) ** 2 + (z.pos.y - prev.pos.y) ** 2
+                if d2 < best_d2:
+                    best_d2 = d2
+                    best = z
+            if best is None:
+                break
+            chained.add(id(best))
+            self.lightning_arcs.append(LightningArc(
+                (prev.pos.x, prev.pos.y), (best.pos.x, best.pos.y),
+            ))
+            was_alive = best.health > 0
+            best.take_damage(damage)
+            if was_alive and shooter is not None and best.health <= 0:
+                pts = int(POINTS_PER_KILL * mult)
+                shooter.points += pts
+                shooter.kills += 1
+                FloatingText(self, best.pos, f"+{pts}", color=(140, 200, 255))
+            prev = best
+
+    def _blast_knockback(self, zombie):
+        """Thundergun: shove the zombie away from the local player."""
+        anchor = self.local_player.pos
+        dx = zombie.pos.x - anchor.x
+        dy = zombie.pos.y - anchor.y
+        length = (dx * dx + dy * dy) ** 0.5
+        if length < 0.1:
+            return
+        push = 60.0
+        zombie.pos.x += dx / length * push
+        zombie.pos.y += dy / length * push
+        zombie.rect.center = zombie.pos
+        zombie.hit_box.center = zombie.pos
 
     def _player_by_id(self, player_id: int | None) -> Player | None:
         if player_id is None:
@@ -706,6 +774,18 @@ class PlayState(State):
         for sprite in self.floating_texts:
             self.surface.blit(sprite.image, sprite.rect)
 
+        # Lightning arcs (Wunderwaffe chain effect)
+        cam_x, cam_y = self.camera.camera.x, self.camera.camera.y
+        for arc in self.lightning_arcs:
+            x1 = int(arc.p1[0] + cam_x); y1 = int(arc.p1[1] + cam_y)
+            x2 = int(arc.p2[0] + cam_x); y2 = int(arc.p2[1] + cam_y)
+            color = (140, 200, 255)
+            pygame.draw.line(self.surface, color, (x1, y1), (x2, y2), 3)
+            mx = (x1 + x2) // 2 + ((y1 - y2) // 8)
+            my = (y1 + y2) // 2 + ((x2 - x1) // 8)
+            pygame.draw.line(self.surface, (240, 240, 255), (x1, y1), (mx, my), 1)
+            pygame.draw.line(self.surface, (240, 240, 255), (mx, my), (x2, y2), 1)
+
         self._draw_low_health_overlay()
         self._draw_damage_flash()
         self._draw_player_labels()
@@ -715,7 +795,25 @@ class PlayState(State):
         if self.round_manager.round_text_countdown > 0:
             self._draw_round_text()
 
+        if self.paused:
+            self._draw_pause_overlay()
+
         pygame.display.flip()
+
+    def _draw_pause_overlay(self):
+        overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
+        overlay.fill((0, 0, 0, 160))
+        self.surface.blit(overlay, (0, 0))
+        font_big = pygame.font.Font(None, 110)
+        font_sm = pygame.font.Font(None, 32)
+        title = font_big.render("PAUSED", True, (220, 220, 220))
+        self.surface.blit(
+            title, title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)),
+        )
+        sub = font_sm.render("Press P to resume", True, (180, 180, 180))
+        self.surface.blit(
+            sub, sub.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)),
+        )
 
     def _draw_player_labels(self):
         if len(self.players) <= 1:
