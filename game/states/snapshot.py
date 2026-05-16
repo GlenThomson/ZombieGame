@@ -30,7 +30,11 @@ def build_snapshot(scene) -> dict:
             for z in scene.zombies
         ],
         "bullets": [
-            {"pos": (float(b.pos.x), float(b.pos.y))}
+            {
+                "pos": (float(b.pos.x), float(b.pos.y)),
+                "kind": getattr(b, "effect_kind", "normal"),
+                "angle": float(b.angle_deg) if getattr(b, "effect_kind", "normal") == "laser" else 0.0,
+            }
             for b in scene.bullets
         ],
         "pickups": [

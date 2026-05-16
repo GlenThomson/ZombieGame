@@ -14,6 +14,7 @@ class HostPlayState(PlayState):
                  door_costs=None, wall_buy_weapons=None, perk_machine_perks=None,
                  floor_grid: list | None = None,
                  wall_style: str = "brick",
+                 decor: list | None = None,
                  host_name: str = "Host", **kwargs):
         # Server holds the connected client list. We need a RemoteInputSource
         # for each client and we must give them stable player_ids matching
@@ -37,6 +38,7 @@ class HostPlayState(PlayState):
             perk_machine_perks=perk_machine_perks,
             floor_grid=floor_grid,
             wall_style=wall_style,
+            decor=decor or [],
             player_count=player_count,
             local_player_id=0,
             remote_input_sources=remote_input_sources,

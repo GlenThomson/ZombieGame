@@ -39,10 +39,49 @@ FLOOR_SPRITES: dict[int, str] = {
 
 # Wall visual styles — one per map (stored in map metadata).
 WALL_STYLES: dict[str, str] = {
-    "brick":    "wall_brick.png",
-    "concrete": "wall_concrete.png",
-    "wood":     "wall_wood.png",
-    "metal":    "wall_metal.png",
+    "brick":     "wall_brick.png",
+    "concrete":  "wall_concrete.png",
+    "wood":      "wall_wood.png",
+    "metal":     "wall_metal.png",
+    "wood_dark": "wall_wood_user.png",   # imported user sprite
+    "planks_h":  "wall_planks_h.png",
+    "panel":     "wall_panel.png",
+}
+
+
+# Decor (furniture / props) layer. Each map can hold a list of decor
+# entries: {"pos": (x, y), "kind": "couch"}. Sprites live in
+# assets/images/decor/ at their natural size — they may visually overflow
+# the cell they sit in (a couch is 80x37, sits in one cell but spreads
+# to its right).
+DECOR_SPRITES: dict[str, str] = {
+    "couch":       "couch.png",
+    "sink":        "sink.png",
+    "chest":       "chest.png",
+    "tv":          "tv.png",
+    "keyboard":    "keyboard.png",
+    "chair":       "chair.png",
+    "bed":         "bed.png",
+    "wood_plank":  "wood_plank.png",
+    "gold_box":    "gold_box.png",
+    "plant_small": "plant_small.png",
+    "plant_large": "plant_large.png",
+}
+
+
+# Whether each decor type physically blocks movement.
+DECOR_BLOCKING: dict[str, bool] = {
+    "couch":       True,
+    "sink":        True,
+    "chest":       True,
+    "tv":          True,
+    "keyboard":    False,
+    "chair":       True,
+    "bed":         True,
+    "wood_plank":  False,   # decoration, walkable
+    "gold_box":    True,
+    "plant_small": False,
+    "plant_large": False,
 }
 
 
@@ -62,6 +101,7 @@ class TileType(IntEnum):
     POWER_SWITCH = 12
     TRAP_FLOGGER = 13
     TRAP_FIRE = 14
+    INVISIBLE_WALL = 15  # blocks movement + bullets, never drawn
 
     @classmethod
     def is_blocking(cls, value: int) -> bool:
@@ -76,6 +116,7 @@ class TileType(IntEnum):
 # Module-level set so the lookup is cheap.
 _BLOCKING_TILES: frozenset[int] = frozenset({
     TileType.WALL,
+    TileType.INVISIBLE_WALL,
     TileType.DOOR_CLOSED,
     TileType.WINDOW,
     TileType.WALL_BUY,

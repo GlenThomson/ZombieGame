@@ -60,7 +60,17 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
     # Skip menu — go straight to play with this map.
     from game.world import map_loader
     data = map_loader.load(f"maps/{map_name}")
-    app.switch("play", grid=data["grid"], background=data["background_image_path"])
+    app.switch(
+        "play",
+        grid=data["grid"],
+        background=data["background_image_path"],
+        door_costs=data["door_costs"],
+        wall_buy_weapons=data["wall_buy_weapons"],
+        perk_machine_perks=data["perk_machine_perks"],
+        floor_grid=data.get("floor_grid"),
+        wall_style=data.get("wall_style", "brick"),
+        decor=data.get("decor", []),
+    )
 
     scene = app.state
     saw_round_advance = False
@@ -198,7 +208,17 @@ def run_one_map(map_name: str, frames: int = 600) -> dict:
             if frame == frames // 2 + 4:
                 app.switch("menu")
             elif frame == frames // 2 + 6:
-                app.switch("play", grid=data["grid"], background=data["background_image_path"])
+                app.switch(
+        "play",
+        grid=data["grid"],
+        background=data["background_image_path"],
+        door_costs=data["door_costs"],
+        wall_buy_weapons=data["wall_buy_weapons"],
+        perk_machine_perks=data["perk_machine_perks"],
+        floor_grid=data.get("floor_grid"),
+        wall_style=data.get("wall_style", "brick"),
+        decor=data.get("decor", []),
+    )
                 scene = app.state
         else:
             app.state.draw()
@@ -234,7 +254,17 @@ def smoke_test_zombie_variants():
 
     data = map_loader.load("maps/final.pkl")
     app = App()
-    app.switch("play", grid=data["grid"], background=data["background_image_path"])
+    app.switch(
+        "play",
+        grid=data["grid"],
+        background=data["background_image_path"],
+        door_costs=data["door_costs"],
+        wall_buy_weapons=data["wall_buy_weapons"],
+        perk_machine_perks=data["perk_machine_perks"],
+        floor_grid=data.get("floor_grid"),
+        wall_style=data.get("wall_style", "brick"),
+        decor=data.get("decor", []),
+    )
     scene = app.state
     spawn = scene.zombie_spawns[0] if scene.zombie_spawns else None
     if spawn is None:
@@ -260,7 +290,17 @@ def smoke_test_hellhound_round():
 
     data = map_loader.load("maps/final.pkl")
     app = App()
-    app.switch("play", grid=data["grid"], background=data["background_image_path"])
+    app.switch(
+        "play",
+        grid=data["grid"],
+        background=data["background_image_path"],
+        door_costs=data["door_costs"],
+        wall_buy_weapons=data["wall_buy_weapons"],
+        perk_machine_perks=data["perk_machine_perks"],
+        floor_grid=data.get("floor_grid"),
+        wall_style=data.get("wall_style", "brick"),
+        decor=data.get("decor", []),
+    )
     scene = app.state
     scene.round_manager.current_round = 5
     scene.round_manager.zombies_to_spawn = 6

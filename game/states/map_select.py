@@ -53,6 +53,7 @@ class MapSelectState(State):
                         perk_machine_perks=data["perk_machine_perks"],
                         floor_grid=data.get("floor_grid"),
                         wall_style=data.get("wall_style", "brick"),
+                        decor=data.get("decor", []),
                     )
                     return
 

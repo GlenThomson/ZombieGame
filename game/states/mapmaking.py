@@ -31,7 +31,7 @@ from game.states.base import State
 from game.ui.toolbar import MapMakerToolbar
 from game.utils import adjusted_mouse_position
 from game.world import map_loader
-from game.world.tile import FloorType, FLOOR_SPRITES, WALL_STYLES
+from game.world.tile import FloorType, FLOOR_SPRITES, WALL_STYLES, DECOR_SPRITES
 
 vector = pygame.math.Vector2
 
@@ -48,7 +48,15 @@ FLOOR_PALETTE: list[tuple[str, FloorType]] = [
     ("carpet",            FloorType.CARPET),
     ("grass",             FloorType.GRASS),
 ]
-WALL_STYLE_CYCLE = ["brick", "concrete", "wood", "metal"]
+WALL_STYLE_CYCLE = ["brick", "concrete", "wood", "metal", "wood_dark", "planks_h", "panel"]
+DECOR_PALETTE: list[str] = list(DECOR_SPRITES.keys())
+LAYER_CYCLE = ["object", "floor", "decor"]
+
+# Cycled with P (perk machine tool active) and B (wall buy tool active).
+PERK_CYCLE = ["Quick Revive", "Juggernog", "Speed Cola", "Double Tap", "Stamin-Up"]
+WALL_BUY_CYCLE = ["Shotgun", "AK74u", "Galil", "SMG", "LMG", "Sniper"]
+PERK_MACHINE_TILE = 9
+WALL_BUY_TILE = 8
 
 
 class MapMakingState(State):
@@ -63,14 +71,18 @@ class MapMakingState(State):
         self.grid: list[list[int]] = []
         self.floor_grid: list[list[int]] = []
         self.wall_style: str = "brick"
-        self.current_layer: str = "object"   # "object" | "floor"
+        self.current_layer: str = "object"   # "object" | "floor" | "decor"
         self.floor_palette_idx: int = 0
+        self.decor_palette_idx: int = 0
+        self.decor: list[dict] = []
         self.item_number = self.toolbar.pop_up_menu.item_number
         self._tk_root = None
         self.editing_filename: str | None = editing
         self.door_costs: dict = {}
         self.wall_buy_weapons: dict = {}
         self.perk_machine_perks: dict = {}
+        self.active_perk: str = "Juggernog"
+        self.active_weapon: str = "Shotgun"
 
         if editing:
             self._load_existing(editing)
@@ -124,6 +136,7 @@ class MapMakingState(State):
             ]
         else:
             self.floor_grid = loaded_floor
+        self.decor = list(data.get("decor") or [])
         self.map_width = len(self.grid[0]) * TILE_SIZE
         self.map_height = len(self.grid) * TILE_SIZE
         if self.background_image_path and os.path.isfile(self.background_image_path):
@@ -137,7 +150,8 @@ class MapMakingState(State):
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_TAB:
-                self.current_layer = "floor" if self.current_layer == "object" else "object"
+                idx = LAYER_CYCLE.index(self.current_layer)
+                self.current_layer = LAYER_CYCLE[(idx + 1) % len(LAYER_CYCLE)]
                 return
             if event.key == pygame.K_w:
                 idx = WALL_STYLE_CYCLE.index(self.wall_style) if self.wall_style in WALL_STYLE_CYCLE else 0
@@ -147,6 +161,29 @@ class MapMakingState(State):
                 idx = event.key - pygame.K_1
                 if 0 <= idx < len(FLOOR_PALETTE):
                     self.floor_palette_idx = idx
+                return
+            if self.current_layer == "decor" and pygame.K_1 <= event.key <= pygame.K_9:
+                idx = event.key - pygame.K_1
+                if 0 <= idx < len(DECOR_PALETTE):
+                    self.decor_palette_idx = idx
+                return
+            if self.current_layer == "decor" and event.key in (pygame.K_LEFTBRACKET, pygame.K_RIGHTBRACKET):
+                # `[` / `]` cycles to the next decor when there are more than 9
+                step = 1 if event.key == pygame.K_RIGHTBRACKET else -1
+                if DECOR_PALETTE:
+                    self.decor_palette_idx = (self.decor_palette_idx + step) % len(DECOR_PALETTE)
+                return
+            # P cycles which perk is dispensed at perk machines you paint.
+            if (event.key == pygame.K_p and self.current_layer == "object"
+                    and self.item_number == PERK_MACHINE_TILE):
+                idx = PERK_CYCLE.index(self.active_perk) if self.active_perk in PERK_CYCLE else 0
+                self.active_perk = PERK_CYCLE[(idx + 1) % len(PERK_CYCLE)]
+                return
+            # B cycles which weapon is sold at wall buys you paint.
+            if (event.key == pygame.K_b and self.current_layer == "object"
+                    and self.item_number == WALL_BUY_TILE):
+                idx = WALL_BUY_CYCLE.index(self.active_weapon) if self.active_weapon in WALL_BUY_CYCLE else 0
+                self.active_weapon = WALL_BUY_CYCLE[(idx + 1) % len(WALL_BUY_CYCLE)]
                 return
 
         self.toolbar.handle_event(
@@ -183,11 +220,29 @@ class MapMakingState(State):
                 if active else FloorType.CONCRETE
             )
             self.floor_grid[gy][gx] = int(ftype)
+        elif self.current_layer == "decor":
+            # Remove any existing decor at this tile first (left or right click).
+            self.decor = [d for d in self.decor if tuple(d.get("pos", ())) != (gx, gy)]
+            if active and DECOR_PALETTE:
+                kind = DECOR_PALETTE[self.decor_palette_idx]
+                self.decor.append({"pos": (gx, gy), "kind": kind})
         else:
             value = self.item_number if active else 0
             if value == 4 and any(4 in row for row in self.grid):
                 return
+            # If we're erasing/replacing a perk machine or wall buy at this
+            # tile, drop its variant so stale entries don't linger after save.
+            prev = self.grid[gy][gx]
+            if prev == PERK_MACHINE_TILE:
+                self.perk_machine_perks.pop((gx, gy), None)
+            if prev == WALL_BUY_TILE:
+                self.wall_buy_weapons.pop((gx, gy), None)
             self.grid[gy][gx] = value
+            # Stamp the chosen variant on newly-painted machines.
+            if active and value == PERK_MACHINE_TILE:
+                self.perk_machine_perks[(gx, gy)] = self.active_perk
+            if active and value == WALL_BUY_TILE:
+                self.wall_buy_weapons[(gx, gy)] = self.active_weapon
 
     def _save_map(self):
         default_name = self.editing_filename[:-4] if self.editing_filename else ""
@@ -209,6 +264,7 @@ class MapMakingState(State):
             perk_machine_perks=self.perk_machine_perks,
             floor_grid=self.floor_grid,
             wall_style=self.wall_style,
+            decor=self.decor,
         )
         self.editing_filename = f"{name}.pkl"
 
@@ -237,6 +293,7 @@ class MapMakingState(State):
             ]
         else:
             self.floor_grid = loaded_floor
+        self.decor = list(data.get("decor") or [])
         self.map_width = len(self.grid[0]) * TILE_SIZE
         self.map_height = len(self.grid) * TILE_SIZE
         bg = data.get("background_image_path")
@@ -271,9 +328,35 @@ class MapMakingState(State):
         self._draw_grid_lines()
         # Then objects (walls, machines, etc.) coloured to match game appearance
         self._draw_objects()
+        # Then decor on top so the editor matches the in-game render order
+        self._draw_decor()
         self.toolbar.draw()
         self._draw_status_bar()
         pygame.display.flip()
+
+    def _draw_decor(self):
+        if not self.decor:
+            return
+        items = []
+        for entry in self.decor:
+            kind = entry.get("kind")
+            pos = entry.get("pos")
+            if not (kind and pos):
+                continue
+            png = DECOR_SPRITES.get(kind)
+            if png is None:
+                continue
+            full = os.path.join("assets", "images", "decor", png)
+            if not os.path.isfile(full):
+                continue
+            img = assets.image(os.path.join("decor", png))
+            x_tile, y_tile = pos
+            rect = img.get_rect(
+                bottomleft=(x_tile * TILE_SIZE, (y_tile + 1) * TILE_SIZE),
+            )
+            items.append((rect.bottom, img, rect))
+        for _b, img, rect in sorted(items, key=lambda t: t[0]):
+            self.surface.blit(img, (rect.x + self.offset.x, rect.y + self.offset.y))
 
     def _draw_floors(self):
         if not self.floor_grid:
@@ -326,6 +409,14 @@ class MapMakingState(State):
             13: ((60, 60, 60), (200, 200, 200)),   # flogger trap
             14: ((180, 60, 0), (255, 130, 0)),     # fire trap
         }
+        # Invisible walls: drawn with a translucent magenta overlay + diagonal
+        # stripe so they're obvious in the editor but never show in-game.
+        invis_overlay = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+        invis_overlay.fill((255, 0, 255, 70))
+        pygame.draw.line(invis_overlay, (255, 0, 255, 200),
+                         (0, 0), (TILE_SIZE, TILE_SIZE), 2)
+        pygame.draw.line(invis_overlay, (255, 0, 255, 200),
+                         (0, TILE_SIZE), (TILE_SIZE, 0), 2)
         for y, row in enumerate(self.grid):
             for x, tile in enumerate(row):
                 rect = (
@@ -338,6 +429,9 @@ class MapMakingState(State):
                         self.surface.blit(wall_img, rect[:2])
                     else:
                         pygame.draw.rect(self.surface, BLACK, rect)
+                    continue
+                if tile == 15:  # INVISIBLE_WALL
+                    self.surface.blit(invis_overlay, rect[:2])
                     continue
                 style = styles.get(tile)
                 if style is None:
@@ -358,9 +452,21 @@ class MapMakingState(State):
                 f"painting: {FLOOR_PALETTE[self.floor_palette_idx][0]}  "
                 f"(1-9 = pick)  W = wall style ({self.wall_style})"
             )
-        else:
+        elif self.current_layer == "decor":
+            kind = DECOR_PALETTE[self.decor_palette_idx] if DECOR_PALETTE else "(none)"
             label = (
-                f"OBJECT mode  [TAB to switch]  W = wall style ({self.wall_style})"
+                f"DECOR mode  [TAB to switch]  "
+                f"painting: {kind} ({self.decor_palette_idx + 1}/{len(DECOR_PALETTE)})  "
+                f"(1-9 = pick, [ ] = cycle, RMB = erase)"
+            )
+        else:
+            extra = ""
+            if self.item_number == PERK_MACHINE_TILE:
+                extra = f"  P = perk ({self.active_perk})"
+            elif self.item_number == WALL_BUY_TILE:
+                extra = f"  B = weapon ({self.active_weapon})"
+            label = (
+                f"OBJECT mode  [TAB to switch]  W = wall style ({self.wall_style}){extra}"
             )
         text = font.render(label, True, GOLD)
         self.surface.blit(text, (10, SCREEN_HEIGHT - 22))

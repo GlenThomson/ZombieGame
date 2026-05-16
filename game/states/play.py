@@ -35,7 +35,7 @@ from game.systems.round_manager import RoundManager
 from game.systems.interaction import find_focused
 from game.systems.input import LocalInputSource, RemoteInputSource
 from game.entities.player import Player
-from game.entities.wall import Wall, BarbWire, ZombieSpawn
+from game.entities.wall import Wall, InvisibleWall, BarbWire, ZombieSpawn
 from game.entities.door import Door, DoorGroup
 from game.entities.wall_buy import WallBuy
 from game.entities.window import Window
@@ -54,6 +54,7 @@ class PlayState(State):
                  wall_buy_weapons=None, perk_machine_perks=None,
                  floor_grid: list | None = None,
                  wall_style: str = "brick",
+                 decor: list | None = None,
                  player_count: int = 1,
                  local_player_id: int = 0,
                  remote_input_sources: dict | None = None,
@@ -64,6 +65,10 @@ class PlayState(State):
         self.bullets = pygame.sprite.Group()
         self.zombies = pygame.sprite.Group()
         self.walls = pygame.sprite.Group()
+        # Subset of self.walls containing ONLY plain Wall sprites (not
+        # doors/windows/machines/etc.). Lets the draw loop iterate just
+        # walls without doing expensive `sprite in other_group` checks.
+        self.plain_walls = pygame.sprite.Group()
         self.barb_wire = pygame.sprite.Group()
         self.blood_splatters = pygame.sprite.Group()
         self.pickups = pygame.sprite.Group()
@@ -76,6 +81,7 @@ class PlayState(State):
         self.pack_a_punch_machines = pygame.sprite.Group()
         self.power_switches = pygame.sprite.Group()
         self.traps = pygame.sprite.Group()
+        self.decor = pygame.sprite.Group()
         self.monkey_bombs = pygame.sprite.Group()
         self.muzzle_flashes = pygame.sprite.Group()
         self.floating_texts = pygame.sprite.Group()
@@ -150,6 +156,7 @@ class PlayState(State):
         self.round_manager = RoundManager(self, starting_round=1, player_count=player_count)
 
         self._populate_from_grid(grid)
+        self._populate_decor(decor or [])
         self._ensure_spawns_exist()
         self._auto_seed_tier1_tiles_if_missing()
         # Maps without a power switch default to "power on" so existing
@@ -219,6 +226,8 @@ class PlayState(State):
             for col, tile in enumerate(tiles):
                 if tile == TileType.WALL:
                     Wall(self, col, row)
+                elif tile == TileType.INVISIBLE_WALL:
+                    InvisibleWall(self, col, row)
                 elif tile == TileType.BARB_WIRE:
                     BarbWire(self, col, row)
                 elif tile == TileType.ZOMBIE_SPAWN:
@@ -261,6 +270,16 @@ class PlayState(State):
         # Adjacent DOOR_CLOSED tiles form one logical door.
         self._build_door_groups(door_tile_set)
         self._player_spawn_set = player_spawn_set
+
+    def _populate_decor(self, decor_list: list):
+        from game.entities.decor import Decor
+        for entry in decor_list:
+            pos = entry.get("pos")
+            kind = entry.get("kind")
+            if pos is None or kind is None:
+                continue
+            x, y = pos
+            Decor(self, int(x), int(y), str(kind))
 
     def _build_door_groups(self, door_tiles: set[tuple[int, int]]):
         visited: set[tuple[int, int]] = set()
@@ -767,18 +786,26 @@ class PlayState(State):
 
         self.blood_splatters.draw(self.surface)
 
-        # Walls + barb wire have real sprites now — draw them above the floor.
-        for sprite in self.walls:
-            # Doors / wall buys / windows / etc. are also in scene.walls but
-            # have their own draw step below, so skip them here.
-            if any(sprite in g for g in (self.doors, self.wall_buys, self.windows,
-                                          self.perk_machines, self.mystery_boxes,
-                                          self.pack_a_punch_machines,
-                                          self.power_switches)):
-                continue
-            self.surface.blit(sprite.image, self.camera.apply(sprite))
+        # Cull off-screen sprites in tight loops — bigger maps make this
+        # mandatory or the draw call dominates.
+        viewport = pygame.Rect(
+            -self.camera.camera.x, -self.camera.camera.y,
+            SCREEN_WIDTH, SCREEN_HEIGHT,
+        )
+        cam = self.camera.camera
+
+        # Plain walls (no membership checks needed thanks to the dedicated group)
+        for sprite in self.plain_walls:
+            if sprite.rect.colliderect(viewport):
+                self.surface.blit(sprite.image, (sprite.rect.x + cam.x, sprite.rect.y + cam.y))
         for sprite in self.barb_wire:
-            self.surface.blit(sprite.image, self.camera.apply(sprite))
+            if sprite.rect.colliderect(viewport):
+                self.surface.blit(sprite.image, (sprite.rect.x + cam.x, sprite.rect.y + cam.y))
+        # Decor sorted by bottom y, viewport-culled.
+        decor_visible = [s for s in self.decor if s.rect.colliderect(viewport)]
+        decor_visible.sort(key=lambda s: s.rect.bottom)
+        for sprite in decor_visible:
+            self.surface.blit(sprite.image, (sprite.rect.x + cam.x, sprite.rect.y + cam.y))
 
         visible_interactables = (
             self.doors, self.wall_buys, self.windows,
@@ -787,16 +814,25 @@ class PlayState(State):
         )
         for group in visible_interactables:
             for sprite in group:
-                self.surface.blit(sprite.image, self.camera.apply(sprite))
+                if sprite.rect.colliderect(viewport):
+                    self.surface.blit(sprite.image, (sprite.rect.x + cam.x, sprite.rect.y + cam.y))
 
+        # Players, pickups, grenades, monkey bombs etc. — anything in
+        # all_sprites that isn't already drawn. We use a single set of
+        # already-drawn sprite ids for fast membership.
+        already_drawn_ids = set()
+        for g in (self.walls, self.barb_wire, self.decor, *visible_interactables):
+            for s in g:
+                already_drawn_ids.add(id(s))
         for sprite in self.all_sprites:
-            if sprite in self.walls or sprite in self.barb_wire:
+            if id(sprite) in already_drawn_ids:
                 continue
-            if any(sprite in g for g in visible_interactables):
+            if not sprite.rect.colliderect(viewport):
                 continue
-            self.surface.blit(sprite.image, self.camera.apply(sprite))
+            self.surface.blit(sprite.image, (sprite.rect.x + cam.x, sprite.rect.y + cam.y))
         for sprite in self.zombies:
-            self.surface.blit(sprite.image, self.camera.apply(sprite))
+            if sprite.rect.colliderect(viewport):
+                self.surface.blit(sprite.image, (sprite.rect.x + cam.x, sprite.rect.y + cam.y))
 
         # Floating points + muzzle flashes
         for sprite in self.muzzle_flashes:

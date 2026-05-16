@@ -10,7 +10,12 @@ from game.world.tile import WALL_STYLES
 
 class Wall(pygame.sprite.Sprite):
     def __init__(self, scene, x_tile: int, y_tile: int):
-        super().__init__(scene.all_sprites, scene.walls)
+        # plain_walls is a perf-only group: lets the draw loop blit walls
+        # without testing membership in 8 other groups.
+        groups = [scene.all_sprites, scene.walls]
+        if hasattr(scene, "plain_walls"):
+            groups.append(scene.plain_walls)
+        super().__init__(*groups)
         self.scene = scene
         png = WALL_STYLES.get(getattr(scene, "wall_style", "brick"), "wall_brick.png")
         full_path = os.path.join("assets", "images", "tiles", png)
@@ -22,16 +27,27 @@ class Wall(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(topleft=(x_tile * TILE_SIZE, y_tile * TILE_SIZE))
 
 
+class InvisibleWall(pygame.sprite.Sprite):
+    """Blocking tile with no visible sprite. For layering over background
+    art / decor that should appear solid. Lives in scene.walls so movement
+    + bullets respect it; deliberately NOT in plain_walls so the draw loop
+    skips it."""
+    def __init__(self, scene, x_tile: int, y_tile: int):
+        super().__init__(scene.all_sprites, scene.walls)
+        self.scene = scene
+        # Fully transparent 1x1 surface — never visible. We can't omit
+        # `image` because some pygame internals expect it, but a SRCALPHA
+        # surface with no fill blits nothing.
+        self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+        self.rect = self.image.get_rect(topleft=(x_tile * TILE_SIZE, y_tile * TILE_SIZE))
+
+
 class BarbWire(pygame.sprite.Sprite):
     def __init__(self, scene, x_tile: int, y_tile: int):
         super().__init__(scene.all_sprites, scene.barb_wire)
         self.scene = scene
-        # Visible barb wire — gray with criss-cross pattern.
+        # Plain transparent surface (kept so legacy code paths still work).
         self.image = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-        self.image.fill((40, 40, 45, 180))
-        for i in range(0, TILE_SIZE, 6):
-            pygame.draw.line(self.image, (200, 200, 200), (i, 0), (i + TILE_SIZE, TILE_SIZE), 1)
-            pygame.draw.line(self.image, (200, 200, 200), (i, TILE_SIZE), (i + TILE_SIZE, 0), 1)
         self.rect = self.image.get_rect(topleft=(x_tile * TILE_SIZE, y_tile * TILE_SIZE))
 
 

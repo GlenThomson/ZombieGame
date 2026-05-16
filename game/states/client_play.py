@@ -27,11 +27,13 @@ class ClientPlayState(State):
     state only renders + forwards input."""
 
     def on_enter(self, *, net_client, my_player_id: int, grid, background=None,
-                 floor_grid: list | None = None, wall_style: str = "brick", **kwargs):
+                 floor_grid: list | None = None, wall_style: str = "brick",
+                 decor: list | None = None, **kwargs):
         self.net_client = net_client
         self.my_player_id = my_player_id
         self.grid = grid
         self.wall_style = wall_style
+        self.decor = decor or []
         from game.world.tile import FloorType
         self.floor_grid = floor_grid or [
             [int(FloorType.CONCRETE) for _ in row] for row in grid
@@ -154,6 +156,9 @@ class ClientPlayState(State):
         if self.background_image is not None and not any(any(r) for r in self.floor_grid):
             self.surface.blit(self.background_image, self.camera.camera.topleft)
 
+        # Decor (sorted by bottom-y so taller items render correctly behind shorter)
+        self._draw_decor(cam_x, cam_y)
+
         # Blood under everything
         for b in snap.get("blood", []):
             img = assets.image("bloodSplatter.png").copy()
@@ -174,7 +179,20 @@ class ClientPlayState(State):
         # Bullets
         for b in snap.get("bullets", []):
             wx, wy = b["pos"]
-            pygame.draw.rect(self.surface, GOLD, (wx + cam_x - 1, wy + cam_y - 1, 3, 3))
+            kind = b.get("kind", "normal")
+            if kind == "laser":
+                base = pygame.Surface((14, 4), pygame.SRCALPHA)
+                pygame.draw.rect(base, (120, 255, 160), base.get_rect(), border_radius=2)
+                pygame.draw.line(base, (255, 255, 255), (1, 2), (12, 2), 1)
+                rotated = pygame.transform.rotate(base, b.get("angle", 0.0))
+                rect = rotated.get_rect(center=(wx + cam_x, wy + cam_y))
+                self.surface.blit(rotated, rect)
+            elif kind == "chain":
+                pygame.draw.rect(self.surface, (140, 200, 255), (wx + cam_x - 1, wy + cam_y - 1, 3, 3))
+            elif kind == "blast":
+                pygame.draw.rect(self.surface, (255, 140, 0), (wx + cam_x - 1, wy + cam_y - 1, 3, 3))
+            else:
+                pygame.draw.rect(self.surface, GOLD, (wx + cam_x - 1, wy + cam_y - 1, 3, 3))
 
         # Monkey bombs
         for m in snap.get("monkey_bombs", []):
@@ -322,6 +340,32 @@ class ClientPlayState(State):
                     (x * TILE_SIZE + cam_x, y * TILE_SIZE + cam_y),
                 )
 
+    def _draw_decor(self, cam_x, cam_y):
+        from game.world.tile import DECOR_SPRITES
+        if not self.decor:
+            return
+        # Build list of (bottom_y, image, topleft) so we can sort.
+        items = []
+        for entry in self.decor:
+            kind = entry.get("kind")
+            pos = entry.get("pos")
+            if not (kind and pos):
+                continue
+            png = DECOR_SPRITES.get(kind)
+            if png is None:
+                continue
+            full = os.path.join("assets", "images", "decor", png)
+            if not os.path.isfile(full):
+                continue
+            img = assets.image(os.path.join("decor", png))
+            x_tile, y_tile = pos
+            rect = img.get_rect(
+                bottomleft=(x_tile * TILE_SIZE, (y_tile + 1) * TILE_SIZE),
+            )
+            items.append((rect.bottom, img, rect))
+        for _b, img, rect in sorted(items, key=lambda t: t[0]):
+            self.surface.blit(img, (rect.x + cam_x, rect.y + cam_y))
+
     def _draw_walls(self, cam_x, cam_y):
         from game.world.tile import TileType, WALL_STYLES
         wall_png = WALL_STYLES.get(self.wall_style, "wall_brick.png")
@@ -375,9 +419,10 @@ class ClientPlayState(State):
             self.surface.blit(img, rect.topleft)
             # Overlays specific to certain types
             if kind == "wall_buy":
-                font = pygame.font.Font(None, 12)
-                label = font.render(str(it.get("weapon", ""))[:6], True, GOLD)
-                self.surface.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - 2)))
+                from game.entities.wall_buy import _fit_label
+                weapon = str(it.get("weapon", ""))
+                label = _fit_label(weapon, GOLD, TILE_SIZE - 4)
+                self.surface.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - 1)))
             elif kind == "mystery_box" and it.get("label"):
                 font = pygame.font.Font(None, 14)
                 label = font.render(str(it["label"]), True, (0, 0, 0))

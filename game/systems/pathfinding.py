@@ -1,5 +1,6 @@
 """A* pathfinding over the tile grid. Caller passes the grid and start/end
 tile coordinates; nothing here knows about Zombie or Player."""
+import heapq
 import pygame
 
 from settings import TILE_SIZE
@@ -8,68 +9,72 @@ from game.world.tile import TileType
 vector = pygame.math.Vector2
 
 
-class _Node:
-    __slots__ = ("pos", "g_cost", "h_cost", "f_cost", "previous")
-
-    def __init__(self, x, y, target, g_cost=0):
-        self.pos = vector(x, y)
-        self.g_cost = g_cost
-        self.h_cost = abs(target.x - x) + abs(target.y - y)
-        self.f_cost = self.g_cost + self.h_cost
-        self.previous = None
-
-
 def find_path(grid, start_world_pos, end_tile_pos) -> list:
     """Returns a list of tile vectors from start to end (inclusive of end).
-    `start_world_pos` is in world (pixel) coords; `end_tile_pos` is in tile coords."""
+    `start_world_pos` is in world (pixel) coords; `end_tile_pos` is in tile
+    coords. Uses a binary heap + dict-based closed set so it scales on big
+    maps (the previous list-sort version was O(N^3))."""
     rows = len(grid)
     cols = len(grid[0])
-    start_tile = vector(start_world_pos.x // TILE_SIZE, start_world_pos.y // TILE_SIZE)
+    sx = int(start_world_pos.x // TILE_SIZE)
+    sy = int(start_world_pos.y // TILE_SIZE)
+    tx = int(end_tile_pos.x)
+    ty = int(end_tile_pos.y)
 
-    def is_wall(cx, cy):
-        if not (0 <= cx < cols and 0 <= cy < rows):
-            return True
-        return TileType.is_blocking(grid[int(cy)][int(cx)])
+    if not (0 <= sx < cols and 0 <= sy < rows):
+        return []
+    if not (0 <= tx < cols and 0 <= ty < rows):
+        return []
 
-    open_nodes = [_Node(start_tile.x, start_tile.y, end_tile_pos)]
-    closed = []
+    def is_blocking(cx, cy):
+        return TileType.is_blocking(grid[cy][cx])
 
-    while open_nodes:
-        open_nodes.sort(key=lambda n: n.f_cost)
-        current = open_nodes.pop(0)
-        closed.append(current)
+    if (sx, sy) == (tx, ty):
+        return [vector(sx, sy)]
 
-        if current.pos == end_tile_pos:
-            path = []
-            n = current
-            while n:
-                path.insert(0, n.pos)
-                n = n.previous
+    # Heap entries: (f_cost, counter, x, y). counter breaks ties so heap
+    # never compares Vector2s.
+    counter = 0
+    open_heap = [(abs(tx - sx) + abs(ty - sy), 0, sx, sy)]
+    came_from: dict[tuple[int, int], tuple[int, int] | None] = {(sx, sy): None}
+    g_score: dict[tuple[int, int], int] = {(sx, sy): 0}
+
+    neighbours = ((-1, -1), (0, -1), (1, -1),
+                  (-1,  0),          (1,  0),
+                  (-1,  1), (0,  1), (1,  1))
+
+    while open_heap:
+        _f, _c, cx, cy = heapq.heappop(open_heap)
+        if (cx, cy) == (tx, ty):
+            # Reconstruct
+            path: list = []
+            cur = (cx, cy)
+            while cur is not None:
+                path.append(vector(cur[0], cur[1]))
+                cur = came_from[cur]
+            path.reverse()
             return path
 
-        for dx in (-1, 0, 1):
-            for dy in (-1, 0, 1):
-                if dx == 0 and dy == 0:
+        cur_g = g_score[(cx, cy)]
+        for dx, dy in neighbours:
+            nx = cx + dx
+            ny = cy + dy
+            if not (0 <= nx < cols and 0 <= ny < rows):
+                continue
+            if is_blocking(nx, ny):
+                continue
+            # Don't cut diagonal corners through walls.
+            if dx != 0 and dy != 0:
+                if is_blocking(cx + dx, cy) or is_blocking(cx, cy + dy):
                     continue
-                x = current.pos.x + dx
-                y = current.pos.y + dy
-                if not (0 <= x < cols and 0 <= y < rows):
-                    continue
-
-                # Don't cut diagonal corners through walls.
-                if dx != 0 and dy != 0:
-                    if is_wall(current.pos.x + dx, current.pos.y) or is_wall(
-                        current.pos.x, current.pos.y + dy
-                    ):
-                        continue
-
-                if is_wall(x, y):
-                    continue
-                if any(n.pos.x == x and n.pos.y == y for n in open_nodes + closed):
-                    continue
-
-                new_node = _Node(x, y, end_tile_pos, current.g_cost + 1)
-                new_node.previous = current
-                open_nodes.append(new_node)
+            tentative_g = cur_g + 1
+            key = (nx, ny)
+            if tentative_g >= g_score.get(key, 1 << 30):
+                continue
+            g_score[key] = tentative_g
+            came_from[key] = (cx, cy)
+            counter += 1
+            f = tentative_g + abs(tx - nx) + abs(ty - ny)
+            heapq.heappush(open_heap, (f, counter, nx, ny))
 
     return []

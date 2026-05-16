@@ -1,5 +1,9 @@
 """Generate two handcrafted tile-based maps with proper room-and-corridor
-layouts (not just rectangles)."""
+layouts, real architecture, and furniture/decor.
+
+NACHT  : 38x28 — abandoned cabin (multiple rooms + porch + barn)
+VERRUCKT: 52x38 — sanitorium (lobby, two wings, courtyard, PaP gate)
+"""
 from game.world.tile import TileType, FloorType
 from game.world import map_loader
 
@@ -13,10 +17,13 @@ def make_grid(w, h, fill=T.EMPTY):
     return [[int(fill) for _ in range(w)] for _ in range(h)]
 
 
+def fill_floor(floors, x, y, w, h, ftype: FloorType):
+    for ry in range(y, y + h):
+        for rx in range(x, x + w):
+            floors[ry][rx] = int(ftype)
+
+
 def room(grid, floors, x, y, w, h, *, floor=F.CONCRETE, walls=True):
-    """Open a rectangular room: floor everywhere inside, optional border of
-    wall tiles. Pre-existing walls AT the border are preserved (so adjacent
-    rooms share their wall instead of doubling it)."""
     for ry in range(y, y + h):
         for rx in range(x, x + w):
             floors[ry][rx] = int(floor)
@@ -27,14 +34,22 @@ def room(grid, floors, x, y, w, h, *, floor=F.CONCRETE, walls=True):
         for ry in range(y, y + h):
             grid[ry][x] = int(T.WALL)
             grid[ry][x + w - 1] = int(T.WALL)
-    # interior is empty (carve any pre-existing walls inside)
     for ry in range(y + 1, y + h - 1):
         for rx in range(x + 1, x + w - 1):
             grid[ry][rx] = int(T.EMPTY)
 
 
+def vwall(grid, x, y0, y1):
+    for y in range(y0, y1 + 1):
+        grid[y][x] = int(T.WALL)
+
+
+def hwall(grid, x0, x1, y):
+    for x in range(x0, x1 + 1):
+        grid[y][x] = int(T.WALL)
+
+
 def open_doorway(grid, x, y, *, vertical=False, length=2):
-    """Carve a doorway in a wall (sets cells to EMPTY)."""
     for i in range(length):
         if vertical:
             grid[y + i][x] = int(T.EMPTY)
@@ -51,23 +66,8 @@ def window_tile(grid, x, y):
     grid[y][x] = int(T.WINDOW)
 
 
-def fill_floor(floors, x, y, w, h, ftype: FloorType):
-    for ry in range(y, y + h):
-        for rx in range(x, x + w):
-            floors[ry][rx] = int(ftype)
-
-
 def place(grid, x, y, ttype: TileType):
     grid[y][x] = int(ttype)
-
-
-def corridor(grid, floors, x, y, w, h, *, floor=F.CONCRETE):
-    """A corridor (no walls — caller responsible for surrounding walls)."""
-    fill_floor(floors, x, y, w, h, floor)
-    for ry in range(y, y + h):
-        for rx in range(x, x + w):
-            if grid[ry][rx] == int(T.WALL):
-                grid[ry][rx] = int(T.EMPTY)
 
 
 def pillar(grid, x, y):
@@ -75,231 +75,329 @@ def pillar(grid, x, y):
 
 
 # ============================================================
-# NACHT DER UNTOTEN — small single-building cabin with several
-# distinct rooms + a central hallway. Player starts in a small
-# bedroom; mystery box is in a back storage room behind a door;
-# wall buys are mounted in nooks off the main hallway.
+# NACHT DER UNTOTEN — 38x28 (was 56x40 — too big)
+# Single-storey cabin with 4 rooms + a covered porch + a separate
+# barn behind a 1500-pt door. Player starts in the bedroom.
 # ============================================================
 
 def build_nacht():
-    W, H = 28, 20
+    W, H = 38, 28
     g = make_grid(W, H)
-    floors = make_grid(W, H, F.GRASS)  # outside everything is grass
+    floors = make_grid(W, H, F.GRASS)
+    decor: list[dict] = []
 
-    # Main building footprint — wood floor
-    room(g, floors, 2, 2, 24, 16, floor=F.WOOD)
+    # ---- MAIN HOUSE (left side) ----
+    HX, HY, HW, HH = 2, 2, 21, 19
+    room(g, floors, HX, HY, HW, HH, floor=F.WOOD)
 
-    # Internal partitions:
-    # Vertical wall splitting interior at col 12 (forms left/right wings)
-    for y in range(3, 17):
-        g[y][12] = int(T.WALL)
-    open_doorway(g, 12, 9, vertical=True, length=3)  # central doorway
-
-    # Upper-left bedroom (small starting area)
-    for x in range(3, 12):
-        g[7][x] = int(T.WALL)
-    open_doorway(g, 7, 7, vertical=False, length=2)
-    fill_floor(floors, 3, 3, 9, 4, F.CARPET)  # bedroom carpet
-    place(g, 5, 4, T.PLAYER_SPAWN)
-    place(g, 3, 6, T.WALL_BUY)   # wall buy on bedroom wall
-
-    # Lower-left main living area (open, with debris pillars)
-    for x in (5, 9):
-        pillar(g, x, 13)
-    pillar(g, 7, 11)
-    fill_floor(floors, 4, 13, 4, 2, F.CONCRETE_BLOODIED)  # blood smear
-    place(g, 11, 16, T.WALL_BUY)  # wall buy on south wall
-
-    # Right wing — divided into TWO rooms (storage + back porch)
-    for x in range(13, 26):
-        g[10][x] = int(T.WALL)
+    # Internal partitions: cross-shaped, dividing into 4 rooms +
+    # a small central hallway around the cross.
+    vwall(g, 12, HY + 1, HY + HH - 2)         # vertical divider
+    hwall(g, HX + 1, HX + HW - 2, 10)         # horizontal divider
+    # Doorways at each cross arm
+    open_doorway(g, 12, 5, vertical=True, length=2)
+    open_doorway(g, 12, 13, vertical=True, length=2)
+    open_doorway(g, 6, 10, vertical=False, length=2)
     open_doorway(g, 17, 10, vertical=False, length=2)
-    fill_floor(floors, 13, 3, 13, 7, F.WOOD)  # storage room
-    fill_floor(floors, 13, 11, 13, 7, F.DIRT)  # back porch (dirt floor)
 
-    # Mystery box in storage room (top-right corner)
-    place(g, 23, 4, T.MYSTERY_BOX)
+    # ---- BEDROOM (top-left, carpet) ----
+    fill_floor(floors, HX + 1, HY + 1, 10, 8, F.CARPET)
+    place(g, 4, 4, T.PLAYER_SPAWN)
+    place(g, 9, 4, T.PLAYER_SPAWN)
+    place(g, 4, 7, T.PLAYER_SPAWN)
+    place(g, 9, 7, T.PLAYER_SPAWN)
+    decor.append({"pos": (3, 4), "kind": "bed"})
+    decor.append({"pos": (8, 4), "kind": "chest"})
+    decor.append({"pos": (3, 8), "kind": "plant_large"})
+    place(g, HX, 4, T.WALL_BUY)
 
-    # Door between right rooms cost something
-    door_tiles(g, [(17, 10), (18, 10)])
+    # ---- KITCHEN (top-right, metal) ----
+    fill_floor(floors, 13, HY + 1, 10, 8, F.METAL)
+    decor.append({"pos": (14, 3), "kind": "sink"})
+    decor.append({"pos": (17, 3), "kind": "sink"})
+    decor.append({"pos": (20, 3), "kind": "sink"})
+    decor.append({"pos": (15, 8), "kind": "chair"})
+    decor.append({"pos": (17, 8), "kind": "chair"})
+    decor.append({"pos": (19, 8), "kind": "chair"})
+    place(g, 22, 4, T.MYSTERY_BOX)
 
-    # Door between left/right wings
-    door_tiles(g, [(12, 9), (12, 10), (12, 11)])
+    # ---- LIVING ROOM (bot-left, carpet) ----
+    fill_floor(floors, HX + 1, 11, 10, 9, F.CARPET)
+    decor.append({"pos": (3, 13), "kind": "couch"})
+    decor.append({"pos": (3, 17), "kind": "couch"})
+    decor.append({"pos": (9, 14), "kind": "tv"})
+    decor.append({"pos": (9, 19), "kind": "plant_large"})
+    place(g, HX, 14, T.WALL_BUY)
 
-    # Windows on the building exterior (alternating sides)
-    for wx in (4, 8, 16, 21):
-        window_tile(g, wx, 2)
-        window_tile(g, wx, 17)
-    for wy in (4, 8, 13, 16):
-        window_tile(g, 2, wy)
-        window_tile(g, 25, wy)
+    # ---- DINING / POWER (bot-right, wood) ----
+    fill_floor(floors, 13, 11, 10, 9, F.WOOD)
+    decor.append({"pos": (15, 14), "kind": "chair"})
+    decor.append({"pos": (15, 16), "kind": "chair"})
+    decor.append({"pos": (17, 14), "kind": "chair"})
+    decor.append({"pos": (17, 16), "kind": "chair"})
+    decor.append({"pos": (19, 14), "kind": "chair"})
+    decor.append({"pos": (19, 16), "kind": "chair"})
+    place(g, 22, 18, T.PERK_MACHINE)
+    place(g, 21, 14, T.POWER_SWITCH)
 
-    # Zombie spawns just outside (in the grass)
-    for sx, sy in ((1, 1), (W - 2, 1), (1, H - 2), (W - 2, H - 2),
-                   (W // 2, 1), (W // 2, H - 2)):
-        place(g, sx, sy, T.ZOMBIE_SPAWN)
+    # ---- HOUSE EXTERIOR DOORS / WINDOWS ----
+    door_tiles(g, [(11, HY + HH - 1)])     # front door (south)
+    door_tiles(g, [(17, HY)])              # kitchen side door (north)
+    door_tiles(g, [(HX + HW - 1, 5), (HX + HW - 1, 6)])  # storage→barn east
+
+    for wx in (4, 9, 16, 21):
+        window_tile(g, wx, HY)
+        window_tile(g, wx, HY + HH - 1)
+    for wy in (4, 8, 14, 18):
+        window_tile(g, HX, wy)
+        window_tile(g, HX + HW - 1, wy)
+
+    # ---- COVERED PORCH (south of house) ----
+    fill_floor(floors, 3, HY + HH, 19, 3, F.WOOD)
+    decor.append({"pos": (4, HY + HH + 1), "kind": "couch"})
+    decor.append({"pos": (10, HY + HH + 1), "kind": "chair"})
+    decor.append({"pos": (16, HY + HH + 1), "kind": "plant_large"})
+
+    # ---- BARN (right side) ----
+    BX, BY, BW, BH = 26, 4, 11, 18
+    room(g, floors, BX, BY, BW, BH, floor=F.DIRT)
+    for px in (BX + 3, BX + 7):
+        pillar(g, px, BY + 6)
+        pillar(g, px, BY + 12)
+    decor.append({"pos": (BX + 1, BY + 2), "kind": "chest"})
+    decor.append({"pos": (BX + 5, BY + 2), "kind": "chest"})
+    decor.append({"pos": (BX + 8, BY + 2), "kind": "chest"})
+    decor.append({"pos": (BX + 1, BY + 15), "kind": "wood_plank"})
+    decor.append({"pos": (BX + 7, BY + 15), "kind": "wood_plank"})
+    place(g, BX + 5, BY + 9, T.PACK_A_PUNCH)
+    decor.append({"pos": (BX + 8, BY + 9), "kind": "gold_box"})
+    place(g, BX, BY + 4, T.WALL_BUY)
+    door_tiles(g, [(BX, BY + 8), (BX, BY + 9), (BX, BY + 10)])
+    for wy in (BY + 3, BY + 8, BY + 14):
+        window_tile(g, BX, wy)
+        window_tile(g, BX + BW - 1, wy)
+    for wx in (BX + 3, BX + 7):
+        window_tile(g, wx, BY)
+        window_tile(g, wx, BY + BH - 1)
+
+    # Path between house and barn
+    fill_floor(floors, HX + HW, 5, BX - (HX + HW), 4, F.DIRT)
+
+    # ---- TRAP ----
+    place(g, 6, 10, T.TRAP_FLOGGER)
+
+    # ---- DECOR PLANTS scattered outside ----
+    for px, py in ((1, 1), (1, 26), (36, 1), (36, 26),
+                   (10, 26), (20, 26), (30, 26)):
+        decor.append({"pos": (px, py), "kind": "plant_large"})
+
+    # ---- ZOMBIE SPAWNS ----
+    for sx, sy in ((1, 1), (W // 2, 1), (W - 2, 1),
+                   (1, H - 2), (W // 2, H - 2), (W - 2, H - 2),
+                   (1, H // 2), (W - 2, H // 2)):
+        if g[sy][sx] == int(T.EMPTY):
+            place(g, sx, sy, T.ZOMBIE_SPAWN)
 
     door_costs = {
-        (12, 9): 750, (12, 10): 750, (12, 11): 750,
-        (17, 10): 1000, (18, 10): 1000,
+        (11, HY + HH - 1): 750,
+        (17, HY): 750,
+        (HX + HW - 1, 5): 1000,
+        (HX + HW - 1, 6): 1000,
+        (BX, BY + 8): 1500,
+        (BX, BY + 9): 1500,
+        (BX, BY + 10): 1500,
     }
     wall_buys = {
-        (3, 6): "Shotgun",
-        (11, 16): "MP40",
+        (HX, 4): "Shotgun",
+        (HX, 14): "SMG",
+        (BX, BY + 4): "Galil",
+    }
+    perks = {
+        (22, 18): "Quick Revive",
     }
 
     map_loader.save(
         g, background_image_path=None, name="nacht",
         wall_buy_weapons=wall_buys,
         door_costs=door_costs,
+        perk_machine_perks=perks,
         floor_grid=floors,
         wall_style="wood",
+        decor=decor,
     )
-    print(f"saved nacht ({W}x{H}) — multi-room cabin layout")
+    print(f"saved nacht ({W}x{H}) — {len(decor)} decor items")
 
 
 # ============================================================
-# VERRÜCKT — sanatorium. Lobby in the south, two corridors heading
-# north (east + west wings), each lined with small rooms. Central
-# courtyard with the power switch. Pack-a-Punch behind a 1500-pt door
-# in the back. Each room has its own floor type.
+# VERRÜCKT — 52x38 (was 72x52 — too big)
+# Sanitorium: lobby south, two wings, courtyard, PaP behind a gate.
 # ============================================================
 
 def build_verruckt():
-    W, H = 42, 30
+    W, H = 52, 38
     g = make_grid(W, H)
-    floors = make_grid(W, H, F.ASPHALT)  # exterior asphalt
+    floors = make_grid(W, H, F.ASPHALT)
+    decor: list[dict] = []
 
-    # Outer building (the sanitorium proper)
-    room(g, floors, 2, 4, 38, 24, floor=F.CONCRETE)
+    BX, BY, BW, BH = 2, 2, 48, 34
+    room(g, floors, BX, BY, BW, BH, floor=F.CONCRETE)
 
-    # ---- LOBBY (south-centre) ----
-    # The entrance hall where the player starts. 14 wide x 6 tall.
-    LX, LY, LW, LH = 14, 22, 14, 6
+    # ---------------- LOBBY (south-centre) ----------------
+    LX, LY, LW, LH = 19, 26, 14, 10
     fill_floor(floors, LX, LY, LW, LH, F.CARPET)
-    # Inner walls separating lobby from adjacent areas
     for x in range(LX, LX + LW):
         g[LY][x] = int(T.WALL)
     for y in range(LY, LY + LH):
         g[y][LX] = int(T.WALL)
         g[y][LX + LW - 1] = int(T.WALL)
-    # Entrance from outside (south wall of building)
-    g[H - 4][20] = int(T.PLAYER_SPAWN)
-    # Lobby has 2 wall buys
+    for sx, sy in ((LX + 2, LY + 4), (LX + LW - 3, LY + 4),
+                   (LX + 2, LY + 7), (LX + LW - 3, LY + 7)):
+        place(g, sx, sy, T.PLAYER_SPAWN)
     place(g, LX + 1, LY + 2, T.WALL_BUY)
     place(g, LX + LW - 2, LY + 2, T.WALL_BUY)
-    # Door from lobby north into central courtyard
-    door_tiles(g, [(20, LY), (21, LY)])
+    decor.append({"pos": (LX + 2, LY + 1), "kind": "couch"})
+    decor.append({"pos": (LX + 8, LY + 1), "kind": "tv"})
+    decor.append({"pos": (LX + 1, LY + 8), "kind": "plant_small"})
+    decor.append({"pos": (LX + LW - 2, LY + 8), "kind": "plant_small"})
+    door_tiles(g, [(LX + LW // 2 - 1, LY), (LX + LW // 2, LY)])
 
-    # ---- WEST CORRIDOR (column ~6, runs north from lobby outside) ----
-    # Two doors gating it.
-    fill_floor(floors, 4, 8, 6, 16, F.CONCRETE)
-    # West wing inner walls
-    for y in range(8, 24):
-        g[y][10] = int(T.WALL)
-    for x in range(4, 11):
-        g[8][x] = int(T.WALL)
-    open_doorway(g, 7, 8, vertical=False, length=2)
-    # West sub-rooms — 3 rooms stacked vertically off the corridor
-    # Room A (top): kitchen
-    fill_floor(floors, 4, 5, 6, 4, F.METAL)
-    g[9][6] = int(T.WALL); g[9][7] = int(T.WALL); g[9][8] = int(T.WALL)
-    open_doorway(g, 5, 9, vertical=False, length=1)
-    # Mystery box in kitchen
-    place(g, 5, 6, T.MYSTERY_BOX)
-    # Room B (mid): office (perk)
-    g[15][4] = int(T.WALL); g[15][5] = int(T.WALL); g[15][6] = int(T.WALL); g[15][7] = int(T.WALL); g[15][8] = int(T.WALL); g[15][9] = int(T.WALL)
-    open_doorway(g, 9, 15, vertical=False, length=1)
-    fill_floor(floors, 3, 11, 7, 4, F.CARPET)
-    place(g, 5, 12, T.PERK_MACHINE)
-    # Room C (bottom): bedroom (perk)
-    fill_floor(floors, 3, 17, 7, 5, F.CARPET)
-    place(g, 5, 19, T.PERK_MACHINE)
-    place(g, 4, 20, T.WALL_BUY)
+    # ---------------- WEST WING ----------------
+    WCX0, WCX1 = 8, 11
+    fill_floor(floors, WCX0, BY + 1, WCX1 - WCX0 + 1, BH - 2, F.CONCRETE)
+    vwall(g, WCX0, BY, BY + BH - 1)
+    vwall(g, WCX1, BY, BY + BH - 1)
 
-    # Connect lobby to west corridor
-    door_tiles(g, [(LX, 24), (LX, 25)])
-    g[24][LX - 1] = int(T.EMPTY)  # carve through
+    # West Room A — KITCHEN (top)
+    fill_floor(floors, BX + 1, 4, 6, 7, F.METAL)
+    hwall(g, BX, 7, 11)
+    open_doorway(g, WCX0, 7, vertical=True, length=2)
+    decor.append({"pos": (BX + 1, 5), "kind": "sink"})
+    decor.append({"pos": (BX + 4, 5), "kind": "sink"})
+    decor.append({"pos": (BX + 1, 9), "kind": "chair"})
+    decor.append({"pos": (BX + 3, 9), "kind": "chair"})
+    decor.append({"pos": (BX + 5, 9), "kind": "chair"})
+    place(g, BX + 1, 6, T.MYSTERY_BOX)
 
-    # ---- EAST CORRIDOR (mirror) ----
-    fill_floor(floors, 32, 8, 6, 16, F.CONCRETE)
-    for y in range(8, 24):
-        g[y][31] = int(T.WALL)
-    for x in range(31, 38):
-        g[8][x] = int(T.WALL)
-    open_doorway(g, 33, 8, vertical=False, length=2)
-    # East sub-rooms
-    # Room A (top): supply room (PaP behind door)
-    fill_floor(floors, 32, 5, 6, 4, F.METAL)
-    g[9][32] = int(T.WALL); g[9][33] = int(T.WALL); g[9][34] = int(T.WALL); g[9][35] = int(T.WALL); g[9][36] = int(T.WALL); g[9][37] = int(T.WALL)
-    door_tiles(g, [(35, 9), (36, 9)])  # the famous PaP gate
-    place(g, 35, 6, T.PACK_A_PUNCH)
-    # Room B (mid): perk + wall buy
-    fill_floor(floors, 32, 11, 7, 4, F.CARPET)
-    g[15][32] = int(T.WALL); g[15][33] = int(T.WALL); g[15][34] = int(T.WALL); g[15][35] = int(T.WALL); g[15][36] = int(T.WALL); g[15][37] = int(T.WALL)
-    open_doorway(g, 33, 15, vertical=False, length=1)
-    place(g, 36, 12, T.PERK_MACHINE)
-    place(g, 37, 14, T.WALL_BUY)
-    # Room C (bottom): perk
-    fill_floor(floors, 32, 17, 7, 5, F.CARPET)
-    place(g, 36, 19, T.PERK_MACHINE)
+    # West Room B — OFFICE / PERK (mid)
+    fill_floor(floors, BX + 1, 12, 7, 7, F.CARPET)
+    hwall(g, BX, 8, 11)
+    hwall(g, BX, 8, 19)
+    open_doorway(g, WCX0, 14, vertical=True, length=2)
+    place(g, BX + 4, 14, T.PERK_MACHINE)
+    place(g, BX, 16, T.WALL_BUY)
+    decor.append({"pos": (BX + 1, 13), "kind": "tv"})
+    decor.append({"pos": (BX + 3, 13), "kind": "keyboard"})
+    decor.append({"pos": (BX + 5, 13), "kind": "chair"})
+    decor.append({"pos": (BX + 1, 17), "kind": "couch"})
 
-    # Connect lobby to east corridor
-    door_tiles(g, [(LX + LW - 1, 24), (LX + LW - 1, 25)])
-    g[24][LX + LW] = int(T.EMPTY)
+    # West Room C — BEDROOM / PERK (bottom)
+    fill_floor(floors, BX + 1, 20, 7, 7, F.CARPET)
+    hwall(g, BX, 8, 20)
+    hwall(g, BX, 8, 27)
+    open_doorway(g, WCX0, 22, vertical=True, length=2)
+    place(g, BX + 4, 22, T.PERK_MACHINE)
+    decor.append({"pos": (BX + 1, 21), "kind": "bed"})
+    decor.append({"pos": (BX + 4, 21), "kind": "bed"})
+    decor.append({"pos": (BX + 1, 25), "kind": "chest"})
+    decor.append({"pos": (BX + 5, 25), "kind": "plant_large"})
 
-    # ---- CENTRAL COURTYARD (between the wings) ----
-    # Outdoor-feeling open area with the power switch.
-    fill_floor(floors, 11, 9, 20, 13, F.DIRT)
-    # Power switch in the dead centre (visible target)
-    place(g, 21, 15, T.POWER_SWITCH)
+    # ---------------- EAST WING (mirror) ----------------
+    ECX0, ECX1 = 40, 43
+    fill_floor(floors, ECX0, BY + 1, ECX1 - ECX0 + 1, BH - 2, F.CONCRETE)
+    vwall(g, ECX0, BY, BY + BH - 1)
+    vwall(g, ECX1, BY, BY + BH - 1)
 
-    # Few interior debris pillars in the courtyard (for cover/interest)
-    for px, py in ((14, 12), (28, 12), (14, 19), (28, 19), (21, 11), (21, 20)):
+    # East Room A — SUPPLY / PaP (top)
+    fill_floor(floors, 44, 4, 5, 7, F.METAL)
+    hwall(g, ECX1, BX + BW - 1, 11)
+    open_doorway(g, ECX1, 7, vertical=True, length=2)
+    place(g, 47, 6, T.PACK_A_PUNCH)
+    decor.append({"pos": (44, 5), "kind": "chest"})
+    decor.append({"pos": (46, 5), "kind": "chest"})
+    decor.append({"pos": (44, 9), "kind": "wood_plank"})
+
+    # East Room B — STAFF (mid)
+    fill_floor(floors, 44, 12, 5, 7, F.CARPET)
+    hwall(g, ECX1, BX + BW - 1, 12)
+    hwall(g, ECX1, BX + BW - 1, 19)
+    open_doorway(g, ECX1, 14, vertical=True, length=2)
+    place(g, 47, 14, T.PERK_MACHINE)
+    place(g, BX + BW - 1, 16, T.WALL_BUY)
+    decor.append({"pos": (44, 13), "kind": "couch"})
+    decor.append({"pos": (47, 13), "kind": "tv"})
+
+    # East Room C — WARD (bottom)
+    fill_floor(floors, 44, 20, 5, 7, F.CARPET)
+    hwall(g, ECX1, BX + BW - 1, 20)
+    hwall(g, ECX1, BX + BW - 1, 27)
+    open_doorway(g, ECX1, 22, vertical=True, length=2)
+    place(g, 47, 22, T.PERK_MACHINE)
+    decor.append({"pos": (44, 21), "kind": "bed"})
+    decor.append({"pos": (47, 21), "kind": "bed"})
+    decor.append({"pos": (44, 25), "kind": "sink"})
+
+    # ---------------- COURTYARD ----------------
+    fill_floor(floors, 12, BY + 1, 28, BH - 2, F.DIRT)
+    place(g, 25, 17, T.POWER_SWITCH)
+    for px, py in ((16, 7), (24, 7), (32, 7),
+                   (16, 26), (24, 26), (32, 26),
+                   (16, 16), (32, 16)):
         pillar(g, px, py)
-
-    # Couple of bloodied accents
-    for fx, fy in ((16, 14), (24, 18), (20, 13)):
+    for fx, fy in ((20, 12), (28, 18), (24, 24)):
         floors[fy][fx] = int(F.CONCRETE_BLOODIED)
+        floors[fy + 1][fx] = int(F.CONCRETE_BLOODIED)
+        floors[fy][fx + 1] = int(F.CONCRETE_BLOODIED)
+    decor.append({"pos": (15, 5), "kind": "couch"})
+    decor.append({"pos": (33, 5), "kind": "couch"})
+    decor.append({"pos": (20, 9), "kind": "chair"})
+    decor.append({"pos": (30, 9), "kind": "chair"})
+    decor.append({"pos": (22, 22), "kind": "chest"})
+    decor.append({"pos": (28, 22), "kind": "tv"})
+    decor.append({"pos": (18, 14), "kind": "plant_large"})
+    decor.append({"pos": (30, 14), "kind": "plant_large"})
 
-    # ---- TRAPS (one in each corridor) ----
-    place(g, 6, 12, T.TRAP_FLOGGER)
-    place(g, 36, 18, T.TRAP_FIRE)
+    # Connect lobby to courtyard already done; corridors -> courtyard
+    door_tiles(g, [(WCX1, 13), (WCX1, 14)])
+    door_tiles(g, [(ECX0, 13), (ECX0, 14)])
 
-    # ---- WINDOWS along the exterior ----
-    for wx in (5, 12, 20, 28, 36):
-        window_tile(g, wx, 4)
-        window_tile(g, wx, H - 4)
-    for wy in (8, 14, 20):
-        window_tile(g, 2, wy)
-        window_tile(g, 39, wy)
+    # ---------------- TRAPS ----------------
+    place(g, 10, 24, T.TRAP_FLOGGER)
+    place(g, 41, 24, T.TRAP_FIRE)
 
-    # ---- ZOMBIE SPAWNS outside the building ----
-    for sx, sy in ((1, 1), (W - 2, 1), (1, H - 2), (W - 2, H - 2),
-                   (W // 2, 1), (W // 2, H - 2),
+    # ---------------- WINDOWS ----------------
+    for wy in (6, 12, 18, 24, 30):
+        window_tile(g, BX, wy)
+        window_tile(g, BX + BW - 1, wy)
+    for wx in (8, 16, 24, 32, 40):
+        window_tile(g, wx, BY)
+        window_tile(g, wx, BY + BH - 1)
+
+    # ---------------- ZOMBIE SPAWNS ----------------
+    for sx, sy in ((1, 1), (W // 2, 1), (W - 2, 1),
+                   (1, H - 2), (W // 2, H - 2), (W - 2, H - 2),
                    (1, H // 2), (W - 2, H // 2)):
-        place(g, sx, sy, T.ZOMBIE_SPAWN)
+        if g[sy][sx] == int(T.EMPTY):
+            place(g, sx, sy, T.ZOMBIE_SPAWN)
 
     door_costs = {
-        # Lobby ↔ courtyard
-        (20, LY): 750, (21, LY): 750,
-        # Lobby ↔ corridors (west + east)
-        (LX, 24): 1000, (LX, 25): 1000,
-        (LX + LW - 1, 24): 1000, (LX + LW - 1, 25): 1000,
-        # PaP gate
-        (35, 9): 1500, (36, 9): 1500,
+        (LX + LW // 2 - 1, LY): 750,
+        (LX + LW // 2, LY): 750,
+        (WCX1, 13): 1000,
+        (WCX1, 14): 1000,
+        (ECX0, 13): 1000,
+        (ECX0, 14): 1000,
     }
     wall_buys = {
         (LX + 1, LY + 2): "Shotgun",
         (LX + LW - 2, LY + 2): "AK74u",
-        (4, 20): "MP40",
-        (37, 14): "Galil",
+        (BX, 16): "SMG",
+        (BX + BW - 1, 16): "Galil",
     }
     perks = {
-        (5, 12): "Quick Revive",
-        (5, 19): "Juggernog",
-        (36, 12): "Speed Cola",
-        (36, 19): "Double Tap",
+        (BX + 4, 14): "Juggernog",
+        (BX + 4, 22): "Speed Cola",
+        (47, 14): "Double Tap",
+        (47, 22): "Stamin-Up",
     }
 
     map_loader.save(
@@ -307,8 +405,9 @@ def build_verruckt():
         door_costs=door_costs, wall_buy_weapons=wall_buys,
         perk_machine_perks=perks,
         floor_grid=floors, wall_style="brick",
+        decor=decor,
     )
-    print(f"saved verruckt ({W}x{H}) — sanitorium-style multi-room layout")
+    print(f"saved verruckt ({W}x{H}) — {len(decor)} decor items")
 
 
 if __name__ == "__main__":

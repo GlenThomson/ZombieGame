@@ -95,6 +95,7 @@ class HostLobbyState(State):
             "perk_machine_perks": data["perk_machine_perks"],
             "floor_grid": data.get("floor_grid"),
             "wall_style": data.get("wall_style", "brick"),
+            "decor": data.get("decor", []),
         })
         self._server_handed_off = True
         self.app.switch(
@@ -108,6 +109,7 @@ class HostLobbyState(State):
             perk_machine_perks=data["perk_machine_perks"],
             floor_grid=data.get("floor_grid"),
             wall_style=data.get("wall_style", "brick"),
+            decor=data.get("decor", []),
         )
 
     def on_exit(self):

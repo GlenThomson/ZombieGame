@@ -27,7 +27,7 @@ WEAPON_DEFS: dict[str, WeaponDef] = {
     "SMG":     WeaponDef("SMG",     bullet_speed=24, bullet_spread=6,  fire_rate=18,   damage=1,  penetration=1, magazine_size=40,  reload_time=2.0, reserve_max=240, shoot_sound="pistol_shot.mp3"),
     "LMG":     WeaponDef("LMG",     bullet_speed=27, bullet_spread=5,  fire_rate=10,   damage=4,  penetration=4, magazine_size=100, reload_time=5.5, reserve_max=400, shoot_sound="pistol_shot.mp3"),
     "Sniper":  WeaponDef("Sniper",  bullet_speed=40, bullet_spread=0,  fire_rate=1.2,  damage=20, penetration=6, magazine_size=5,   reload_time=3.5, reserve_max=30,  shoot_sound="pistol_shot.mp3"),
-    "Ray Gun": WeaponDef("Ray Gun", bullet_speed=35, bullet_spread=0,  fire_rate=2.5,  damage=50, penetration=8, magazine_size=20,  reload_time=4.0, reserve_max=160, shoot_sound="pistol_shot.mp3"),
+    "Ray Gun": WeaponDef("Ray Gun", bullet_speed=22, bullet_spread=0,  fire_rate=2.5,  damage=50, penetration=8, magazine_size=20,  reload_time=4.0, reserve_max=160, shoot_sound="pistol_shot.mp3", effect_kind="laser"),
     # Last-stand sidearm. Infinite reserve (reserve_max=0 = no reserve concept,
     # so the magazine just refills freely). Underpowered on purpose — you're
     # supposed to crawl to safety, not finish the round from down.

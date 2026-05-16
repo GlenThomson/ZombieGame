@@ -13,6 +13,17 @@ from settings import (
 )
 
 
+def _fit_label(text: str, color, max_width: int) -> pygame.Surface:
+    """Render `text` at the largest font size that still fits within
+    max_width. Caps at size 18 so it doesn't get silly on short names."""
+    for size in (18, 16, 14, 12, 10):
+        font = pygame.font.Font(None, size)
+        rendered = font.render(text, True, color)
+        if rendered.get_width() <= max_width:
+            return rendered
+    return rendered  # smallest tried, even if it's still too wide
+
+
 class WallBuy(pygame.sprite.Sprite):
     def __init__(self, scene, x_tile: int, y_tile: int, weapon_name: str):
         super().__init__(scene.all_sprites, scene.wall_buys)
@@ -27,16 +38,14 @@ class WallBuy(pygame.sprite.Sprite):
         from game import assets
         if os.path.isfile(os.path.join("assets", "images", "wall_buy_generic.png")):
             self.image = assets.image("wall_buy_generic.png").copy()
-            font = pygame.font.Font(None, 12)
-            label = font.render(weapon_name[:6], True, GOLD)
-            self.image.blit(label, label.get_rect(midbottom=(TILE_SIZE // 2, TILE_SIZE - 2)))
+            label = _fit_label(weapon_name, GOLD, TILE_SIZE - 4)
+            self.image.blit(label, label.get_rect(midbottom=(TILE_SIZE // 2, TILE_SIZE - 1)))
         else:
             self.image = pygame.Surface((TILE_SIZE, TILE_SIZE))
             self.image.fill((40, 40, 50))
             pygame.draw.rect(self.image, GOLD, self.image.get_rect(), 2)
-            font = pygame.font.Font(None, 16)
-            text = font.render(weapon_name[:6], True, GOLD)
-            self.image.blit(text, (4, TILE_SIZE // 2 - 6))
+            label = _fit_label(weapon_name, GOLD, TILE_SIZE - 4)
+            self.image.blit(label, label.get_rect(center=(TILE_SIZE // 2, TILE_SIZE // 2)))
         self.rect = self.image.get_rect(topleft=(x_tile * TILE_SIZE, y_tile * TILE_SIZE))
 
     def get_world_pos(self) -> tuple[float, float]:
