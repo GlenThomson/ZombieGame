@@ -51,6 +51,8 @@ class MapSelectState(State):
                         door_costs=data["door_costs"],
                         wall_buy_weapons=data["wall_buy_weapons"],
                         perk_machine_perks=data["perk_machine_perks"],
+                        floor_grid=data.get("floor_grid"),
+                        wall_style=data.get("wall_style", "brick"),
                     )
                     return
 

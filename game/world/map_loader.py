@@ -26,24 +26,32 @@ def load(path: str) -> dict:
         door_costs = raw.get("door_costs") or {}
         wall_buy_weapons = raw.get("wall_buy_weapons") or {}
         perk_machine_perks = raw.get("perk_machine_perks") or {}
+        floor_grid = raw.get("floor_grid")
+        wall_style = raw.get("wall_style", "brick")
     else:
         grid = raw
         bg = None
         door_costs = {}
         wall_buy_weapons = {}
         perk_machine_perks = {}
+        floor_grid = None
+        wall_style = "brick"
     return {
         "grid": grid,
         "background_image_path": bg,
         "door_costs": door_costs,
         "wall_buy_weapons": wall_buy_weapons,
         "perk_machine_perks": perk_machine_perks,
+        "floor_grid": floor_grid,   # may be None for legacy maps
+        "wall_style": wall_style,
     }
 
 
 def save(grid: list, background_image_path: str | None, name: str,
          door_costs: dict | None = None, wall_buy_weapons: dict | None = None,
-         perk_machine_perks: dict | None = None) -> None:
+         perk_machine_perks: dict | None = None,
+         floor_grid: list | None = None,
+         wall_style: str = "brick") -> None:
     os.makedirs(MAPS_DIR, exist_ok=True)
     payload = {
         "grid": grid,
@@ -51,6 +59,8 @@ def save(grid: list, background_image_path: str | None, name: str,
         "door_costs": door_costs or {},
         "wall_buy_weapons": wall_buy_weapons or {},
         "perk_machine_perks": perk_machine_perks or {},
+        "floor_grid": floor_grid,
+        "wall_style": wall_style,
     }
     with open(os.path.join(MAPS_DIR, f"{name}.pkl"), "wb") as f:
         pickle.dump(payload, f)

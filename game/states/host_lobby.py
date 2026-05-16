@@ -93,8 +93,9 @@ class HostLobbyState(State):
             "door_costs": data["door_costs"],
             "wall_buy_weapons": data["wall_buy_weapons"],
             "perk_machine_perks": data["perk_machine_perks"],
+            "floor_grid": data.get("floor_grid"),
+            "wall_style": data.get("wall_style", "brick"),
         })
-        # Hand the server off — HostPlayState will own it from here on.
         self._server_handed_off = True
         self.app.switch(
             "host_play",
@@ -105,6 +106,8 @@ class HostLobbyState(State):
             door_costs=data["door_costs"],
             wall_buy_weapons=data["wall_buy_weapons"],
             perk_machine_perks=data["perk_machine_perks"],
+            floor_grid=data.get("floor_grid"),
+            wall_style=data.get("wall_style", "brick"),
         )
 
     def on_exit(self):

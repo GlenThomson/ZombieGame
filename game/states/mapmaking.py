@@ -1,4 +1,12 @@
-"""Map editor — paint walls / barb wire / spawns onto a grid, then save."""
+"""Tile-based map editor.
+
+Two layers: the "floor" layer (every cell is a FloorType) and the "object"
+layer (TileType — walls, doors, perks, etc., 0 = nothing). Tab toggles
+which layer your clicks paint into. The floor palette is displayed when
+the floor layer is active; the object palette otherwise.
+
+Wall sprites are themed via wall_style (brick / concrete / wood / metal) —
+press W to cycle while editing."""
 import os
 import pickle
 import tkinter as tk
@@ -15,13 +23,32 @@ from settings import (
     LIGHTGREY,
     RED,
     PURPLE,
+    GOLD,
+    MENU_TEXT,
 )
+from game import assets
 from game.states.base import State
 from game.ui.toolbar import MapMakerToolbar
 from game.utils import adjusted_mouse_position
 from game.world import map_loader
+from game.world.tile import FloorType, FLOOR_SPRITES, WALL_STYLES
 
 vector = pygame.math.Vector2
+
+
+# Floor palette — mirrors FloorType enum order
+FLOOR_PALETTE: list[tuple[str, FloorType]] = [
+    ("concrete",          FloorType.CONCRETE),
+    ("concrete bloodied", FloorType.CONCRETE_BLOODIED),
+    ("wood",              FloorType.WOOD),
+    ("brick",             FloorType.BRICK),
+    ("metal",             FloorType.METAL),
+    ("dirt",              FloorType.DIRT),
+    ("asphalt",           FloorType.ASPHALT),
+    ("carpet",            FloorType.CARPET),
+    ("grass",             FloorType.GRASS),
+]
+WALL_STYLE_CYCLE = ["brick", "concrete", "wood", "metal"]
 
 
 class MapMakingState(State):
@@ -34,10 +61,12 @@ class MapMakingState(State):
         self.map_width = 0
         self.map_height = 0
         self.grid: list[list[int]] = []
+        self.floor_grid: list[list[int]] = []
+        self.wall_style: str = "brick"
+        self.current_layer: str = "object"   # "object" | "floor"
+        self.floor_palette_idx: int = 0
         self.item_number = self.toolbar.pop_up_menu.item_number
         self._tk_root = None
-        # When editing an existing map, save defaults to overwriting it
-        # without prompting (Save) and we also keep its metadata.
         self.editing_filename: str | None = editing
         self.door_costs: dict = {}
         self.wall_buy_weapons: dict = {}
@@ -46,8 +75,38 @@ class MapMakingState(State):
         if editing:
             self._load_existing(editing)
         else:
-            self._select_background_and_size()
-            self._create_outer_wall()
+            self._init_blank_map()
+
+    def _init_blank_map(self):
+        """No file dialog — ask for size, then create a blank grid."""
+        self._tk_root = tk.Tk()
+        self._tk_root.withdraw()
+        size = simpledialog.askstring(
+            "New Map", "Map size (e.g. 30x20):", initialvalue="30x20",
+        )
+        self._tk_root.destroy()
+        self._tk_root = None
+        if not size:
+            self.app.switch("menu")
+            return
+        try:
+            w_str, h_str = size.lower().split("x")
+            w = max(8, min(120, int(w_str.strip())))
+            h = max(8, min(80, int(h_str.strip())))
+        except (ValueError, AttributeError):
+            self.app.switch("menu")
+            return
+        self.map_width = w * TILE_SIZE
+        self.map_height = h * TILE_SIZE
+        self.grid = [[0 for _ in range(w)] for _ in range(h)]
+        self.floor_grid = [[int(FloorType.CONCRETE) for _ in range(w)] for _ in range(h)]
+        # Outer wall
+        for y in range(h):
+            self.grid[y][0] = 1
+            self.grid[y][w - 1] = 1
+        for x in range(w):
+            self.grid[0][x] = 1
+            self.grid[h - 1][x] = 1
 
     def _load_existing(self, filename: str):
         data = map_loader.load(f"maps/{filename}")
@@ -56,51 +115,40 @@ class MapMakingState(State):
         self.door_costs = dict(data.get("door_costs") or {})
         self.wall_buy_weapons = dict(data.get("wall_buy_weapons") or {})
         self.perk_machine_perks = dict(data.get("perk_machine_perks") or {})
-        if self.background_image_path and os.path.isfile(self.background_image_path):
-            self.background_image = pygame.image.load(self.background_image_path).convert()
-            self.map_width = self.background_image.get_width()
-            self.map_height = self.background_image.get_height()
+        self.wall_style = data.get("wall_style", "brick")
+        loaded_floor = data.get("floor_grid")
+        if loaded_floor is None:
+            # Legacy map: synthesize a floor grid (all concrete).
+            self.floor_grid = [
+                [int(FloorType.CONCRETE) for _ in row] for row in self.grid
+            ]
         else:
-            # No background image — sizes derive from the grid itself.
-            self.background_image = None
-            self.map_width = len(self.grid[0]) * TILE_SIZE if self.grid else SCREEN_WIDTH
-            self.map_height = len(self.grid) * TILE_SIZE if self.grid else SCREEN_HEIGHT
-
-    def _select_background_and_size(self):
-        self._tk_root = tk.Tk()
-        self._tk_root.withdraw()
-        path = filedialog.askopenfilename(
-            initialdir=os.getcwd(),
-            title="Select Background Image",
-            filetypes=[("Image Files", "*.png;*.jpg;*.jpeg")],
-        )
-        self._tk_root.destroy()
-        self._tk_root = None
-        if not path:
-            self.app.switch("menu")
-            return
-        self.background_image_path = path
-        self.background_image = pygame.image.load(path).convert()
-        self.map_width = self.background_image.get_width()
-        self.map_height = self.background_image.get_height()
-        self.grid = [
-            [0 for _ in range(self.map_width // TILE_SIZE)]
-            for _ in range(self.map_height // TILE_SIZE)
-        ]
-
-    def _create_outer_wall(self):
-        if not self.grid:
-            return
-        h = len(self.grid)
-        w = len(self.grid[0])
-        for y in range(h):
-            for x in range(w):
-                if x == 0 or y == 0 or x == w - 1 or y == h - 1:
-                    self.grid[y][x] = 1
+            self.floor_grid = loaded_floor
+        self.map_width = len(self.grid[0]) * TILE_SIZE
+        self.map_height = len(self.grid) * TILE_SIZE
+        if self.background_image_path and os.path.isfile(self.background_image_path):
+            try:
+                self.background_image = pygame.image.load(self.background_image_path).convert()
+            except pygame.error:
+                self.background_image = None
 
     # ---- per-frame ----
 
     def handle_event(self, event):
+        if event.type == pygame.KEYDOWN:
+            if event.key == pygame.K_TAB:
+                self.current_layer = "floor" if self.current_layer == "object" else "object"
+                return
+            if event.key == pygame.K_w:
+                idx = WALL_STYLE_CYCLE.index(self.wall_style) if self.wall_style in WALL_STYLE_CYCLE else 0
+                self.wall_style = WALL_STYLE_CYCLE[(idx + 1) % len(WALL_STYLE_CYCLE)]
+                return
+            if self.current_layer == "floor" and pygame.K_1 <= event.key <= pygame.K_9:
+                idx = event.key - pygame.K_1
+                if 0 <= idx < len(FLOOR_PALETTE):
+                    self.floor_palette_idx = idx
+                return
+
         self.toolbar.handle_event(
             event,
             on_menu=lambda: self.app.switch("menu"),
@@ -117,26 +165,31 @@ class MapMakingState(State):
 
         if event.type == pygame.MOUSEBUTTONDOWN:
             if event.button == 1:
-                self._paint_tile(self.item_number)
+                self._paint(active=True)
             elif event.button == 3:
-                self._paint_tile(0)
+                self._paint(active=False)
 
-    def _paint_tile(self, value: int):
+    def _paint(self, active: bool):
         if not self.grid:
             return
         x, y = adjusted_mouse_position(int(self.offset.x), int(self.offset.y))
         gx, gy = x // TILE_SIZE, y // TILE_SIZE
         if not (0 <= gy < len(self.grid) and 0 <= gx < len(self.grid[0])):
             return
-        # Don't allow two player spawns.
-        if value == 4 and any(4 in row for row in self.grid):
-            return
-        self.grid[gy][gx] = value
+
+        if self.current_layer == "floor":
+            ftype = (
+                FLOOR_PALETTE[self.floor_palette_idx][1]
+                if active else FloorType.CONCRETE
+            )
+            self.floor_grid[gy][gx] = int(ftype)
+        else:
+            value = self.item_number if active else 0
+            if value == 4 and any(4 in row for row in self.grid):
+                return
+            self.grid[gy][gx] = value
 
     def _save_map(self):
-        # When editing an existing map, default to overwriting it without
-        # prompting (the user already chose this map). Pre-fill the dialog
-        # with the existing name when prompting.
         default_name = self.editing_filename[:-4] if self.editing_filename else ""
         self._tk_root = tk.Tk()
         self._tk_root.withdraw()
@@ -154,8 +207,9 @@ class MapMakingState(State):
             door_costs=self.door_costs,
             wall_buy_weapons=self.wall_buy_weapons,
             perk_machine_perks=self.perk_machine_perks,
+            floor_grid=self.floor_grid,
+            wall_style=self.wall_style,
         )
-        # Now editing the saved file (so a subsequent Save defaults to it).
         self.editing_filename = f"{name}.pkl"
 
     def _open_map(self):
@@ -170,18 +224,28 @@ class MapMakingState(State):
         self._tk_root = None
         if not path:
             return
-        # Use map_loader so we get all the metadata too.
         data = map_loader.load(path)
         self.grid = data["grid"]
         self.door_costs = dict(data.get("door_costs") or {})
         self.wall_buy_weapons = dict(data.get("wall_buy_weapons") or {})
         self.perk_machine_perks = dict(data.get("perk_machine_perks") or {})
+        self.wall_style = data.get("wall_style", "brick")
+        loaded_floor = data.get("floor_grid")
+        if loaded_floor is None:
+            self.floor_grid = [
+                [int(FloorType.CONCRETE) for _ in row] for row in self.grid
+            ]
+        else:
+            self.floor_grid = loaded_floor
+        self.map_width = len(self.grid[0]) * TILE_SIZE
+        self.map_height = len(self.grid) * TILE_SIZE
         bg = data.get("background_image_path")
+        self.background_image_path = bg
         if bg and os.path.isfile(bg):
-            self.background_image_path = bg
-            self.background_image = pygame.image.load(bg).convert()
-            self.map_width = self.background_image.get_width()
-            self.map_height = self.background_image.get_height()
+            try:
+                self.background_image = pygame.image.load(bg).convert()
+            except pygame.error:
+                self.background_image = None
         self.editing_filename = os.path.basename(path)
 
     def update(self):
@@ -189,52 +253,74 @@ class MapMakingState(State):
 
     def _scroll_camera(self):
         keys = pygame.key.get_pressed()
-        if keys[pygame.K_LEFT] or keys[pygame.K_a]:
+        # Use arrow keys for scrolling so WASD doesn't trip wall-style toggle.
+        if keys[pygame.K_LEFT]:
             self.offset.x = min(self.offset.x + self.scroll_speed, 0)
-        if keys[pygame.K_RIGHT] or keys[pygame.K_d]:
+        if keys[pygame.K_RIGHT]:
             self.offset.x = max(self.offset.x - self.scroll_speed, -self.map_width + SCREEN_WIDTH)
-        if keys[pygame.K_UP] or keys[pygame.K_w]:
+        if keys[pygame.K_UP]:
             self.offset.y = min(self.offset.y + self.scroll_speed, 0)
-        if keys[pygame.K_DOWN] or keys[pygame.K_s]:
+        if keys[pygame.K_DOWN]:
             self.offset.y = max(self.offset.y - self.scroll_speed, -self.map_height + SCREEN_HEIGHT)
 
     def draw(self):
-        if self.background_image:
-            self.surface.blit(self.background_image, (self.offset.x, self.offset.y))
-        else:
-            self.surface.fill(WHITE)
+        self.surface.fill(WHITE)
+        # Floor tiles first
+        self._draw_floors()
+        # Then a thin grid line pass for legibility
         self._draw_grid_lines()
-        self._draw_items()
+        # Then objects (walls, machines, etc.) coloured to match game appearance
+        self._draw_objects()
         self.toolbar.draw()
+        self._draw_status_bar()
         pygame.display.flip()
 
+    def _draw_floors(self):
+        if not self.floor_grid:
+            return
+        for y, row in enumerate(self.floor_grid):
+            for x, ftype in enumerate(row):
+                png = FLOOR_SPRITES.get(int(ftype))
+                if png is None:
+                    continue
+                img = assets.image(os.path.join("tiles", png))
+                self.surface.blit(
+                    img, (x * TILE_SIZE + self.offset.x, y * TILE_SIZE + self.offset.y),
+                )
+
     def _draw_grid_lines(self):
-        for x in range(0, self.map_width, TILE_SIZE):
+        h = len(self.grid) * TILE_SIZE
+        w = len(self.grid[0]) * TILE_SIZE if self.grid else 0
+        for x in range(0, w + 1, TILE_SIZE):
             pygame.draw.line(
-                self.surface, BLACK, (x + self.offset.x, self.offset.y),
-                (x + self.offset.x, self.map_height + self.offset.y), 1,
+                self.surface, (40, 40, 40),
+                (x + self.offset.x, self.offset.y),
+                (x + self.offset.x, h + self.offset.y), 1,
             )
-        for y in range(0, self.map_height, TILE_SIZE):
+        for y in range(0, h + 1, TILE_SIZE):
             pygame.draw.line(
-                self.surface, BLACK, (self.offset.x, y + self.offset.y),
-                (self.map_width + self.offset.x, y + self.offset.y), 1,
+                self.surface, (40, 40, 40),
+                (self.offset.x, y + self.offset.y),
+                (w + self.offset.x, y + self.offset.y), 1,
             )
 
-    def _draw_items(self):
-        # Map tile-int → (fill, border)
-        # Keep in sync with TileType: 1=WALL, 2=BARB, 3=ZSPAWN, 4=PSPAWN,
-        # 5=DOOR_CLOSED, 6=DOOR_OPEN, 7=WINDOW, 8=WALL_BUY.
+    def _draw_objects(self):
+        # Wall colour reflects the chosen style for visual feedback.
+        wall_png = WALL_STYLES.get(self.wall_style, "wall_brick.png")
+        wall_img = None
+        wall_path = os.path.join("assets", "images", "tiles", wall_png)
+        if os.path.isfile(wall_path):
+            wall_img = assets.image(os.path.join("tiles", wall_png))
         styles = {
-            1: (BLACK, None),
-            2: (LIGHTGREY, None),
-            3: (RED, None),
-            4: (PURPLE, None),
-            5: ((110, 60, 20), (255, 215, 0)),     # closed door
-            6: ((60, 35, 15), (120, 80, 40)),      # open door (dimmer)
+            2: (LIGHTGREY, None),                  # barb wire
+            3: (RED, None),                        # zombie spawn
+            4: (PURPLE, None),                     # player spawn
+            5: ((110, 60, 20), GOLD),              # closed door
+            6: ((60, 35, 15), (120, 80, 40)),      # open door
             7: ((140, 100, 50), (200, 180, 200)),  # window
-            8: ((40, 40, 50), (255, 215, 0)),      # wall buy
-            9: ((220, 0, 0), (220, 220, 220)),     # perk machine (Juggernog red)
-            10: ((60, 30, 10), (255, 215, 0)),     # mystery box
+            8: ((40, 40, 50), GOLD),               # wall buy
+            9: ((220, 0, 0), (220, 220, 220)),     # perk machine
+            10: ((60, 30, 10), GOLD),              # mystery box
             11: ((200, 160, 0), (255, 230, 80)),   # pack-a-punch
             12: ((50, 50, 60), (255, 220, 80)),    # power switch
             13: ((60, 60, 60), (200, 200, 200)),   # flogger trap
@@ -242,16 +328,39 @@ class MapMakingState(State):
         }
         for y, row in enumerate(self.grid):
             for x, tile in enumerate(row):
+                rect = (
+                    x * TILE_SIZE + self.offset.x,
+                    y * TILE_SIZE + self.offset.y,
+                    TILE_SIZE, TILE_SIZE,
+                )
+                if tile == 1:
+                    if wall_img is not None:
+                        self.surface.blit(wall_img, rect[:2])
+                    else:
+                        pygame.draw.rect(self.surface, BLACK, rect)
+                    continue
                 style = styles.get(tile)
                 if style is None:
                     continue
                 fill, border = style
-                rect = (
-                    x * TILE_SIZE + self.offset.x,
-                    y * TILE_SIZE + self.offset.y,
-                    TILE_SIZE,
-                    TILE_SIZE,
-                )
                 pygame.draw.rect(self.surface, fill, rect)
                 if border is not None:
                     pygame.draw.rect(self.surface, border, rect, 2)
+
+    def _draw_status_bar(self):
+        font = pygame.font.Font(None, 22)
+        bar = pygame.Surface((SCREEN_WIDTH, 26), pygame.SRCALPHA)
+        bar.fill((0, 0, 0, 180))
+        self.surface.blit(bar, (0, SCREEN_HEIGHT - 26))
+        if self.current_layer == "floor":
+            label = (
+                f"FLOOR mode  [TAB to switch]  "
+                f"painting: {FLOOR_PALETTE[self.floor_palette_idx][0]}  "
+                f"(1-9 = pick)  W = wall style ({self.wall_style})"
+            )
+        else:
+            label = (
+                f"OBJECT mode  [TAB to switch]  W = wall style ({self.wall_style})"
+            )
+        text = font.render(label, True, GOLD)
+        self.surface.blit(text, (10, SCREEN_HEIGHT - 22))

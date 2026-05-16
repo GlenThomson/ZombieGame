@@ -6,6 +6,7 @@ Multi-player ready: holds a list of Player instances. The "local" player
 On a single-player game there's just one player and `local_player_id == 0`.
 """
 import math
+import os
 import random
 import pygame
 
@@ -51,6 +52,8 @@ from game.ui.hud import HUD
 class PlayState(State):
     def on_enter(self, *, grid, background=None, door_costs=None,
                  wall_buy_weapons=None, perk_machine_perks=None,
+                 floor_grid: list | None = None,
+                 wall_style: str = "brick",
                  player_count: int = 1,
                  local_player_id: int = 0,
                  remote_input_sources: dict | None = None,
@@ -92,6 +95,17 @@ class PlayState(State):
         self.door_costs = dict(door_costs or {})
         self.wall_buy_weapons = dict(wall_buy_weapons or {})
         self.perk_machine_perks = dict(perk_machine_perks or {})
+        # Wall style is read by the Wall entity in its __init__, so set it
+        # BEFORE _populate_from_grid below.
+        self.wall_style = wall_style
+        # Floor grid: same shape as the object grid. If not provided
+        # (legacy map), default to all CONCRETE.
+        from game.world.tile import FloorType
+        if floor_grid is None:
+            floor_grid = [
+                [int(FloorType.CONCRETE) for _ in row] for row in grid
+            ]
+        self.floor_grid = floor_grid
 
         self.timed_effects: dict[str, tuple[int, callable]] = {}
         self.points_multiplier = 1.0
@@ -745,7 +759,10 @@ class PlayState(State):
     def draw(self):
         pygame.display.set_caption(f"{self.app.clock.get_fps():.2f}")
         self.surface.fill(WHITE)
-        if self.background_image is not None:
+        # Draw the floor tile grid (every cell). Background image is now a
+        # legacy fallback only used if floor_grid was empty for some reason.
+        self._draw_floor_grid()
+        if self.background_image is not None and not any(any(r) for r in self.floor_grid):
             self.surface.blit(self.background_image, self.camera.camera.topleft)
 
         self.blood_splatters.draw(self.surface)
@@ -799,6 +816,28 @@ class PlayState(State):
             self._draw_pause_overlay()
 
         pygame.display.flip()
+
+    def _draw_floor_grid(self):
+        """Blit the floor tile beneath each cell. Only draws cells in the
+        camera's viewport so big maps stay fast."""
+        from game.world.tile import FLOOR_SPRITES
+        from game import assets
+        cam_x, cam_y = self.camera.camera.x, self.camera.camera.y
+        # Visible tile range — clamp to grid bounds.
+        rows = len(self.floor_grid)
+        cols = len(self.floor_grid[0]) if rows else 0
+        x0 = max(0, int(-cam_x) // TILE_SIZE)
+        y0 = max(0, int(-cam_y) // TILE_SIZE)
+        x1 = min(cols, x0 + SCREEN_WIDTH // TILE_SIZE + 2)
+        y1 = min(rows, y0 + SCREEN_HEIGHT // TILE_SIZE + 2)
+        for y in range(y0, y1):
+            for x in range(x0, x1):
+                ftype = self.floor_grid[y][x]
+                png = FLOOR_SPRITES.get(int(ftype))
+                if png is None:
+                    continue
+                img = assets.image(os.path.join("tiles", png))
+                self.surface.blit(img, (x * TILE_SIZE + cam_x, y * TILE_SIZE + cam_y))
 
     def _draw_pause_overlay(self):
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)

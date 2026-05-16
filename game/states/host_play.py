@@ -12,6 +12,8 @@ from game.states.snapshot import build_snapshot
 class HostPlayState(PlayState):
     def on_enter(self, *, server, lobby_clients: list, grid, background=None,
                  door_costs=None, wall_buy_weapons=None, perk_machine_perks=None,
+                 floor_grid: list | None = None,
+                 wall_style: str = "brick",
                  host_name: str = "Host", **kwargs):
         # Server holds the connected client list. We need a RemoteInputSource
         # for each client and we must give them stable player_ids matching
@@ -33,6 +35,8 @@ class HostPlayState(PlayState):
             door_costs=door_costs,
             wall_buy_weapons=wall_buy_weapons,
             perk_machine_perks=perk_machine_perks,
+            floor_grid=floor_grid,
+            wall_style=wall_style,
             player_count=player_count,
             local_player_id=0,
             remote_input_sources=remote_input_sources,

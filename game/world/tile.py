@@ -1,6 +1,49 @@
 """Tile types stored in the map grid. The integer values are the on-disk
-encoding; older maps still use the raw ints, so don't renumber casually."""
+encoding; older maps still use the raw ints, so don't renumber casually.
+
+Maps now have TWO grids:
+- floor_grid: per-cell FloorType (always something, default CONCRETE)
+- object_grid: per-cell TileType (0 = nothing on top of the floor)
+
+Old maps with only `grid` are treated as object_grid with a default floor.
+"""
 from enum import IntEnum
+
+
+class FloorType(IntEnum):
+    """Floor tile under each cell. Pure visual — doesn't affect movement."""
+    CONCRETE = 0
+    WOOD = 1
+    BRICK = 2
+    METAL = 3
+    DIRT = 4
+    ASPHALT = 5
+    CARPET = 6
+    GRASS = 7
+    CONCRETE_BLOODIED = 8
+
+
+# Maps each FloorType to its asset filename (under assets/images/tiles/).
+FLOOR_SPRITES: dict[int, str] = {
+    int(FloorType.CONCRETE):          "floor_concrete.png",
+    int(FloorType.CONCRETE_BLOODIED): "floor_concrete_bloodied.png",
+    int(FloorType.WOOD):              "floor_wood.png",
+    int(FloorType.BRICK):             "floor_brick.png",
+    int(FloorType.METAL):             "floor_metal.png",
+    int(FloorType.DIRT):              "floor_dirt.png",
+    int(FloorType.ASPHALT):           "floor_asphalt.png",
+    int(FloorType.CARPET):            "floor_carpet.png",
+    int(FloorType.GRASS):             "floor_grass.png",
+}
+
+
+# Wall visual styles — one per map (stored in map metadata).
+WALL_STYLES: dict[str, str] = {
+    "brick":    "wall_brick.png",
+    "concrete": "wall_concrete.png",
+    "wood":     "wall_wood.png",
+    "metal":    "wall_metal.png",
+}
 
 
 class TileType(IntEnum):
