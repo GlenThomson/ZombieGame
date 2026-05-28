@@ -305,7 +305,13 @@ class ClientPlayState(State):
                 overlay.fill((*tint, 230))
                 base.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
             self._player_images[pid] = base
-        if p.get("is_down"):
+        if p.get("is_dead"):
+            # Dead = a flat corpse: half-size, rotated to their last facing
+            # and dimmed further so it visibly reads as a body, not a player.
+            img = pygame.transform.scale(base, (TILE_SIZE // 2, TILE_SIZE // 2))
+            img = pygame.transform.rotate(img, p.get("angle", 0))
+            img.set_alpha(110)
+        elif p.get("is_down"):
             # Greyscale-ish indicator: tint toward grey + ~half size
             img = pygame.transform.scale(base, (TILE_SIZE * 2 // 3, TILE_SIZE * 2 // 3))
             img.set_alpha(170)

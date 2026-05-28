@@ -121,6 +121,13 @@ class HostServer:
                 continue
             except OSError:
                 break
+            # Disable Nagle's algorithm so small per-frame snapshots ship
+            # immediately instead of being held in the OS buffer up to
+            # 200ms — major cause of "lag spikes" on LAN/WAN play.
+            try:
+                sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            except OSError:
+                pass
             with self._clients_lock:
                 if len(self.clients) >= self.max_clients:
                     try:

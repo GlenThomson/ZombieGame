@@ -75,13 +75,7 @@ def build_snapshot(scene) -> dict:
             for f in scene.floating_texts
         ],
         "interactables": _interactables_list(scene),
-        "interaction_prompts": {
-            p.player_id: (find_focused(
-                (p.rect.centerx, p.rect.centery), scene.interactables, 60
-            ).get_prompt(p) if find_focused(
-                (p.rect.centerx, p.rect.centery), scene.interactables, 60
-            ) else None) for p in scene.players
-        },
+        "interaction_prompts": _interaction_prompts(scene),
         "round": scene.round_manager.current_round,
         "kill_count": scene.kill_count,
         "round_text_countdown": scene.round_manager.round_text_countdown,
@@ -89,6 +83,22 @@ def build_snapshot(scene) -> dict:
         "points_multiplier": scene.points_multiplier,
         "power_on": getattr(scene, "power_on", True),
     }
+
+
+def _interaction_prompts(scene) -> dict:
+    """Per-player nearest-interactable prompt. The old inline dict-comp
+    called find_focused TWICE per player (once to test, once to read).
+    Skip dead players entirely so a corpse doesn't trigger door prompts."""
+    out: dict[int, str | None] = {}
+    for p in scene.players:
+        if p.is_dead():
+            out[p.player_id] = None
+            continue
+        focused = find_focused(
+            (p.rect.centerx, p.rect.centery), scene.interactables, 60,
+        )
+        out[p.player_id] = focused.get_prompt(p) if focused else None
+    return out
 
 
 def _player_dict(player, scene) -> dict:

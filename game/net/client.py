@@ -34,6 +34,13 @@ class NetClient:
             self.last_error = str(e)
             return False
         sock.settimeout(None)
+        # Match the host: disable Nagle's so per-frame input packets don't
+        # get held in the OS buffer. Without this, holding W could feel
+        # noticeably laggy on Windows.
+        try:
+            sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+        except OSError:
+            pass
         self._sock = sock
         self.connected = True
         self.send({"type": protocol.C_HELLO, "name": name, "version": protocol.PROTOCOL_VERSION})

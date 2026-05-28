@@ -97,6 +97,13 @@ class Player(pygame.sprite.Sprite):
         scene-level events ("interact") elsewhere first."""
         if snap is None:
             snap = self.input_source.snapshot()
+        # Dead players are spectators — they keep their last position +
+        # facing but get no movement, no shooting, no interaction. Without
+        # this guard a bled-out (or hp<=0) player can still drive their
+        # body around and fire, which is what made "the other player
+        # dying doesn't do much" in MP.
+        if self.is_dead() or self.health <= 0 and not self.is_down:
+            return
         if self.is_down:
             # Crawling: no movement, but you can still aim + shoot the
             # last-stand pistol (CoD authentic).
