@@ -126,6 +126,7 @@ class JoinLobbyState(State):
                     floor_grid=msg.get("floor_grid"),
                     wall_style=msg.get("wall_style", "brick"),
                     decor=msg.get("decor", []),
+                    background_bytes=msg.get("background_image_bytes"),
                 )
                 return
             elif kind == protocol.S_GOODBYE:

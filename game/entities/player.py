@@ -38,9 +38,12 @@ class Player(pygame.sprite.Sprite):
 
         base = assets.image(image_name, scale=(TILE_SIZE, TILE_SIZE))
         if tint is not None:
+            # Solid-colour tint: pick the player's tint hue but keep
+            # near-full opacity so they don't look like a ghost. The
+            # previous alpha (110) cut the sprite to ~43% opaque.
             base = base.copy()
             overlay = pygame.Surface(base.get_size(), pygame.SRCALPHA)
-            overlay.fill((*tint, 110))
+            overlay.fill((*tint, 230))
             base.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
         self.original_image = base
         self.image = self.original_image.copy()

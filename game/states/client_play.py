@@ -28,7 +28,8 @@ class ClientPlayState(State):
 
     def on_enter(self, *, net_client, my_player_id: int, grid, background=None,
                  floor_grid: list | None = None, wall_style: str = "brick",
-                 decor: list | None = None, **kwargs):
+                 decor: list | None = None, background_bytes: bytes | None = None,
+                 **kwargs):
         self.net_client = net_client
         self.my_player_id = my_player_id
         self.grid = grid
@@ -43,15 +44,27 @@ class ClientPlayState(State):
         self.map_height = len(grid) * TILE_SIZE
         self.camera = Camera(self.map_width, self.map_height)
 
-        # Background path may be a path that exists on the host but not on
-        # this PC. Fall back to assets/images/<basename> the same way the
-        # map_loader does for offline loads.
-        from game.world.map_loader import _resolve_bg_path
-        resolved = _resolve_bg_path(background)
-        if resolved:
-            self.background_image = pygame.image.load(resolved).convert()
-        else:
-            self.background_image = None
+        # Preferred path: host bundled the raw bg bytes in S_START_GAME, so
+        # we always render the same view regardless of whether this PC has
+        # the matching asset file. Fallback: resolve a local file path the
+        # same way map_loader does for offline play.
+        self.background_image = None
+        if background_bytes:
+            try:
+                import io
+                self.background_image = pygame.image.load(
+                    io.BytesIO(background_bytes)
+                ).convert()
+            except (pygame.error, Exception):
+                self.background_image = None
+        if self.background_image is None:
+            from game.world.map_loader import _resolve_bg_path
+            resolved = _resolve_bg_path(background)
+            if resolved:
+                try:
+                    self.background_image = pygame.image.load(resolved).convert()
+                except pygame.error:
+                    self.background_image = None
 
         # World-mouse provider for our local input source so aim coords are
         # in the same frame the host expects.
@@ -286,9 +299,10 @@ class ClientPlayState(State):
             base = assets.image("player.png", scale=(TILE_SIZE, TILE_SIZE))
             tint = PLAYER_TINTS[pid % len(PLAYER_TINTS)] if pid > 0 else None
             if tint is not None:
+                # Match Player.__init__: solid-coloured tint, near-full alpha.
                 base = base.copy()
                 overlay = pygame.Surface(base.get_size(), pygame.SRCALPHA)
-                overlay.fill((*tint, 110))
+                overlay.fill((*tint, 230))
                 base.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
             self._player_images[pid] = base
         if p.get("is_down"):

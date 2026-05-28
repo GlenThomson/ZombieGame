@@ -49,14 +49,18 @@ class HostPlayState(PlayState):
         # Stash the original map blob so late joiners can be re-handed
         # S_START_GAME without us having to track each field separately.
         # Send only the basename so clients on other machines resolve via
-        # their local assets/images/ fallback.
+        # their local assets/images/ fallback; also bundle the raw bytes
+        # so clients that don't have the asset locally still match the host.
         import os as _os
         bg_for_wire = _os.path.basename(background) if background else None
+        from game.states.host_lobby import _read_bg_bytes
+        bg_bytes = _read_bg_bytes(background)
         self._start_game_payload = {
             "type": protocol.S_START_GAME,
             "map_name": map_name,
             "grid": grid,
             "background_image_path": bg_for_wire,
+            "background_image_bytes": bg_bytes,
             "door_costs": door_costs or {},
             "wall_buy_weapons": wall_buy_weapons or {},
             "perk_machine_perks": perk_machine_perks or {},

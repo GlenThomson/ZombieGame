@@ -20,6 +20,28 @@ from game.ui.menu_widgets import Button, draw_menu_background
 from game.world import map_loader
 
 
+def _read_bg_bytes(bg_path: str | None) -> bytes | None:
+    """Return the raw bytes of the background image, or None if there's no
+    file. We hunt at the exact path first, then fall back to
+    assets/images/<basename> so a map saved with a path like
+    C:/.../zombiemap..png still finds its companion asset that lives in the
+    repo. Bundled into S_START_GAME so clients don't need a local copy."""
+    if not bg_path:
+        return None
+    candidates = [bg_path]
+    base = os.path.basename(bg_path)
+    if base:
+        candidates.append(os.path.join("assets", "images", base))
+    for path in candidates:
+        if os.path.isfile(path):
+            try:
+                with open(path, "rb") as f:
+                    return f.read()
+            except OSError:
+                return None
+    return None
+
+
 def get_local_ip() -> str:
     """Best-effort local LAN IP. Falls back to 127.0.0.1 if no network."""
     try:
@@ -92,11 +114,15 @@ class HostLobbyState(State):
         # assets/images/<basename>, which is checked into the repo.
         bg_path = data["background_image_path"]
         bg_for_wire = os.path.basename(bg_path) if bg_path else None
+        # Also bundle the raw bg image bytes so clients without a
+        # matching asset file still render the same view as the host.
+        bg_bytes = _read_bg_bytes(bg_path)
         self.server.broadcast({
             "type": protocol.S_START_GAME,
             "map_name": fname,
             "grid": data["grid"],
             "background_image_path": bg_for_wire,
+            "background_image_bytes": bg_bytes,
             "door_costs": data["door_costs"],
             "wall_buy_weapons": data["wall_buy_weapons"],
             "perk_machine_perks": data["perk_machine_perks"],
