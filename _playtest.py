@@ -252,7 +252,7 @@ def smoke_test_zombie_variants():
     from game.world import map_loader
     from game.entities.zombie_variants import Crawler, Runner, Hellhound
 
-    data = map_loader.load("maps/final.pkl")
+    data = map_loader.load("maps/nacht.pkl")
     app = App()
     app.switch(
         "play",
@@ -288,7 +288,7 @@ def smoke_test_hellhound_round():
     from game.world import map_loader
     from game.entities.zombie_variants import Hellhound
 
-    data = map_loader.load("maps/final.pkl")
+    data = map_loader.load("maps/nacht.pkl")
     app = App()
     app.switch(
         "play",
