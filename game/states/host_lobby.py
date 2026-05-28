@@ -67,6 +67,16 @@ class HostLobbyState(State):
         # on_exit() will shutdown the server so we don't leak listeners.
         self._server_handed_off = False
 
+        # UDP discovery so clients see this game in their join list. Lives
+        # for the duration of the lobby; HostPlayState reuses it via the
+        # `announcer` kwarg on switch.
+        from game.net.discovery import DiscoveryAnnouncer
+        self.announcer = DiscoveryAnnouncer(
+            host_name="Host", game_port=DEFAULT_HOST_PORT,
+        )
+        self.announcer.max_players = MAX_PLAYERS
+        self.announcer.start()
+
         self.local_ip = get_local_ip()
         self.maps = map_loader.list_maps()
         self.selected_map_idx = 0 if self.maps else -1
@@ -131,10 +141,17 @@ class HostLobbyState(State):
             "decor": data.get("decor", []),
         })
         self._server_handed_off = True
+        # Mark the announcer as in-game and hand it off; HostPlayState
+        # owns its lifetime from here so the game stays discoverable.
+        self.announcer.update(map_name=fname, in_game=True,
+                              player_count=1 + len(clients))
+        announcer = self.announcer
+        self.announcer = None  # don't double-stop in on_exit
         self.app.switch(
             "host_play",
             server=self.server,
             lobby_clients=clients,
+            announcer=announcer,
             map_name=fname,
             grid=data["grid"],
             background=data["background_image_path"],
@@ -154,6 +171,10 @@ class HostLobbyState(State):
         # server whose UI is no longer being drawn.
         if not self._server_handed_off:
             self.server.shutdown()
+        # Stop announcing only if we still own it (i.e. we didn't hand it
+        # off to HostPlayState above).
+        if self.announcer is not None:
+            self.announcer.stop()
 
     def update(self):
         # Push lobby state to clients so they see who else has joined.
@@ -165,6 +186,14 @@ class HostLobbyState(State):
             "hosting_name": "Host",
             "map_name": self.maps[self.selected_map_idx] if self.selected_map_idx >= 0 else "",
         })
+        # Keep the LAN announcement fresh — map selection and player
+        # count change as people join / the host cycles maps.
+        if self.announcer is not None:
+            self.announcer.update(
+                map_name=self.maps[self.selected_map_idx] if self.selected_map_idx >= 0 else "",
+                player_count=1 + len(clients),
+                in_game=False,
+            )
 
     def draw(self):
         draw_menu_background(self.surface, pygame.time.get_ticks())

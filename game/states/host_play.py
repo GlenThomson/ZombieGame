@@ -22,11 +22,13 @@ class HostPlayState(PlayState):
                  wall_style: str = "brick",
                  decor: list | None = None,
                  map_name: str = "",
+                 announcer=None,
                  host_name: str = "Host", **kwargs):
         # Server holds the connected client list. We need a RemoteInputSource
         # for each client and we must give them stable player_ids matching
         # what each client thinks it is (the player_id sent in S_WELCOME).
         self.server = server
+        self.announcer = announcer  # may be None if launched without lobby
         self.client_id_to_input: dict[int, RemoteInputSource] = {}
 
         # Build the explicit player roster. The host is always pid=0; each
@@ -130,6 +132,11 @@ class HostPlayState(PlayState):
             pass
 
     def update(self):
+        # Refresh LAN announcement player count so mid-game joiners see
+        # accurate state.
+        if self.announcer is not None:
+            self.announcer.update(player_count=len(self.players), in_game=True)
+
         # Promote any new TCP connections into players + ship them the map.
         self._check_for_late_joiners()
 
@@ -197,3 +204,5 @@ class HostPlayState(PlayState):
             self.server.shutdown()
         except Exception:
             pass
+        if self.announcer is not None:
+            self.announcer.stop()
