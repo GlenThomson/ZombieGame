@@ -28,22 +28,35 @@ class HostPlayState(PlayState):
         # what each client thinks it is (the player_id sent in S_WELCOME).
         self.server = server
         self.client_id_to_input: dict[int, RemoteInputSource] = {}
-        remote_input_sources = {}
-        names = [host_name]
+
+        # Build the explicit player roster. The host is always pid=0; each
+        # lobby client keeps the pid the server already told them about (so
+        # the snapshot they receive includes a player with their pid and the
+        # client's camera can find itself).
+        def _world_mouse_host():
+            mx, my = pygame.mouse.get_pos()
+            return (mx - self.camera.camera.x, my - self.camera.camera.y)
+
+        from game.systems.input import LocalInputSource as _LocalInput
+        players_spec: list[tuple[int, str, object]] = [
+            (0, host_name, _LocalInput(world_mouse_provider=_world_mouse_host)),
+        ]
         for client in lobby_clients:
             src = RemoteInputSource()
             self.client_id_to_input[client.player_id] = src
-            remote_input_sources[client.player_id] = src
-            names.append(client.name)
+            players_spec.append((client.player_id, client.name, src))
 
-        player_count = 1 + len(lobby_clients)
         # Stash the original map blob so late joiners can be re-handed
         # S_START_GAME without us having to track each field separately.
+        # Send only the basename so clients on other machines resolve via
+        # their local assets/images/ fallback.
+        import os as _os
+        bg_for_wire = _os.path.basename(background) if background else None
         self._start_game_payload = {
             "type": protocol.S_START_GAME,
             "map_name": map_name,
             "grid": grid,
-            "background_image_path": background,
+            "background_image_path": bg_for_wire,
             "door_costs": door_costs or {},
             "wall_buy_weapons": wall_buy_weapons or {},
             "perk_machine_perks": perk_machine_perks or {},
@@ -60,10 +73,8 @@ class HostPlayState(PlayState):
             floor_grid=floor_grid,
             wall_style=wall_style,
             decor=decor or [],
-            player_count=player_count,
             local_player_id=0,
-            remote_input_sources=remote_input_sources,
-            player_names=names,
+            players_spec=players_spec,
         )
 
     # ---- mid-game join ----

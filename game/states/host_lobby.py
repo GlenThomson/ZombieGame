@@ -1,5 +1,6 @@
 """Host lobby: shows our LAN IP, lists connected players, lets us pick a
 map and start the game."""
+import os
 import socket
 import pygame
 
@@ -85,11 +86,17 @@ class HostLobbyState(State):
         fname = self.maps[self.selected_map_idx]
         data = map_loader.load(f"maps/{fname}")
         clients = self.server.connected_clients()
+        # Ship only the basename of the bg path: an absolute Windows path
+        # that resolves on the host won't resolve on a client's machine.
+        # _resolve_bg_path on the receiving side falls back to
+        # assets/images/<basename>, which is checked into the repo.
+        bg_path = data["background_image_path"]
+        bg_for_wire = os.path.basename(bg_path) if bg_path else None
         self.server.broadcast({
             "type": protocol.S_START_GAME,
             "map_name": fname,
             "grid": data["grid"],
-            "background_image_path": data["background_image_path"],
+            "background_image_path": bg_for_wire,
             "door_costs": data["door_costs"],
             "wall_buy_weapons": data["wall_buy_weapons"],
             "perk_machine_perks": data["perk_machine_perks"],

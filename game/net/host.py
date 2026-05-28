@@ -93,7 +93,9 @@ class HostServer:
         self._accept_thread: Optional[threading.Thread] = None
         self.clients: list[_ClientHandle] = []
         self._clients_lock = threading.Lock()
-        self._next_player_id = 1  # host is 0
+        # Reuse the lowest unused pid >= 1 (host is always 0). Stops pids
+        # drifting upward after disconnect/reconnect cycles, which would
+        # cause player_id mismatches downstream.
         self._running = False
         self.on_client_joined = lambda c: None
         self.on_client_left = lambda c: None
@@ -128,8 +130,7 @@ class HostServer:
                     finally:
                         sock.close()
                     continue
-                pid = self._next_player_id
-                self._next_player_id += 1
+                pid = self._allocate_pid_locked()
                 handle = _ClientHandle(sock, addr, pid)
                 self.clients.append(handle)
             handle.send({
@@ -143,6 +144,15 @@ class HostServer:
             )
             t.start()
             self.on_client_joined(handle)
+
+    def _allocate_pid_locked(self) -> int:
+        """Return the smallest pid >= 1 not currently in use by a connected
+        client. Caller must hold self._clients_lock."""
+        used = {c.player_id for c in self.clients}
+        pid = 1
+        while pid in used:
+            pid += 1
+        return pid
 
     def _on_client_disconnect(self, handle: _ClientHandle):
         with self._clients_lock:

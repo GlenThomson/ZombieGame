@@ -124,9 +124,7 @@ class PlayState(State):
         self.camera = Camera(self.map_width, self.map_height)
 
         # ---- Players ----
-        player_count = max(1, min(MAX_PLAYERS, player_count))
         self.local_player_id = local_player_id
-        names = player_names or [f"Player{i + 1}" for i in range(player_count)]
         self.players: list[Player] = []
         remote_input_sources = remote_input_sources or {}
 
@@ -134,17 +132,36 @@ class PlayState(State):
             mx, my = pygame.mouse.get_pos()
             return (mx - self.camera.camera.x, my - self.camera.camera.y)
 
-        for i in range(player_count):
-            input_source = remote_input_sources.get(i)
-            if input_source is None and i == local_player_id:
-                input_source = LocalInputSource(world_mouse_provider=_world_mouse)
-            elif input_source is None:
-                input_source = RemoteInputSource()
-            tint = PLAYER_TINTS[i % len(PLAYER_TINTS)] if i > 0 else None
+        # Build the canonical player roster. `players_spec` (if provided) is
+        # an authoritative list of (player_id, name, input_source) tuples; the
+        # caller is responsible for making sure each player_id matches the
+        # value that downstream code (e.g. the network client) expects. This
+        # path is what HostPlayState uses so server-assigned pids stay intact
+        # even after disconnect/reconnect cycles.
+        players_spec = kwargs.get("players_spec")
+        if not players_spec:
+            # Legacy path: derive a roster from player_count + the indexed
+            # remote_input_sources dict. Used by SP + a few harnesses.
+            player_count = max(1, min(MAX_PLAYERS, player_count))
+            names = player_names or [f"Player{i + 1}" for i in range(player_count)]
+            players_spec = []
+            for i in range(player_count):
+                src = remote_input_sources.get(i)
+                if src is None and i == local_player_id:
+                    src = LocalInputSource(world_mouse_provider=_world_mouse)
+                elif src is None:
+                    src = RemoteInputSource()
+                players_spec.append((i, names[i] if i < len(names) else f"Player{i + 1}", src))
+        else:
+            # Cap at MAX_PLAYERS to be safe — the caller still owns the order.
+            players_spec = list(players_spec)[:MAX_PLAYERS]
+
+        for pid, name, input_source in players_spec:
+            tint = PLAYER_TINTS[pid % len(PLAYER_TINTS)] if pid > 0 else None
             p = Player(
                 self, 20 * TILE_SIZE, 20 * TILE_SIZE,
-                player_id=i,
-                name=names[i] if i < len(names) else f"Player{i + 1}",
+                player_id=pid,
+                name=name,
                 input_source=input_source,
                 tint=tint,
             )
@@ -153,7 +170,7 @@ class PlayState(State):
         self.perk_system_by_player = {p.player_id: PerkSystem(p) for p in self.players}
 
         # Round manager spawn-scaling depends on player count.
-        self.round_manager = RoundManager(self, starting_round=1, player_count=player_count)
+        self.round_manager = RoundManager(self, starting_round=1, player_count=len(self.players))
 
         self._populate_from_grid(grid)
         self._populate_decor(decor or [])
