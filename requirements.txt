@@ -1,1 +1,6 @@
+# Runtime dependencies for playing the game. Install with:
+#   .venv\Scripts\python.exe -m pip install -r requirements.txt
+#
+# (Pillow is only needed if you're going to run the dev sprite-import
+# helper scripts. Not required to play.)
 pygame>=2.6,<3
