@@ -234,4 +234,20 @@ class HostLobbyState(State):
         self.start_button.draw(self.surface)
         self.back_button.draw(self.surface)
 
+        # Network hint near the bottom — covers the two issues people hit
+        # most: Windows Firewall blocking the .exe, and friends on a
+        # different network unable to reach the LAN IP.
+        hint_font = pygame.font.Font(None, 22)
+        for i, line in enumerate([
+            "On the same wifi? Friends will see this game in their JOIN list automatically.",
+            "Not connecting? Allow Zombies through Windows Firewall when prompted.",
+            "Different network? You need a VPN like Hamachi / Tailscale on both PCs.",
+        ]):
+            rendered = hint_font.render(line, True, MENU_TEXT_DIM)
+            self.surface.blit(
+                rendered,
+                (SCREEN_WIDTH // 2 - rendered.get_width() // 2,
+                 SCREEN_HEIGHT - 180 + i * 22),
+            )
+
         pygame.display.flip()

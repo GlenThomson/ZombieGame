@@ -102,7 +102,22 @@ class HostPlayState(PlayState):
                 except Exception:
                     pass
                 continue
-            self._add_late_joiner(client)
+            try:
+                self._add_late_joiner(client)
+            except Exception as e:
+                # If we crash mid-promotion, the joiner would otherwise sit
+                # in their join screen forever. Tell them what happened so
+                # they can retry, and roll back the half-built Player.
+                print(f"[host] late-join failed for client {client.player_id}: "
+                      f"{type(e).__name__}: {e}")
+                self.client_id_to_input.pop(client.player_id, None)
+                self.perk_system_by_player.pop(client.player_id, None)
+                self.players = [p for p in self.players if p.player_id != client.player_id]
+                try:
+                    client.send({"type": protocol.S_REJECT,
+                                 "reason": "host failed to add you to the game"})
+                except Exception:
+                    pass
 
     def _add_late_joiner(self, client):
         # Spawn near the host so the new player isn't dropped in a sealed-off

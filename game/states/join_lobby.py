@@ -120,10 +120,23 @@ class JoinLobbyState(State):
         if self.client is not None and self.client.connected:
             self.status = "Already connected. Waiting for host..."
             return
+        self.status = f"Connecting to {self.ip_text}:{port}..."
         self.client = NetClient()
         ok = self.client.connect(self.ip_text, port=port, name="Player", timeout=4.0)
         if not ok:
-            self.status = f"Couldn't connect: {self.client.last_error or 'unknown'}"
+            err = (self.client.last_error or "unknown").lower()
+            if "timed out" in err or "10060" in err or "no route" in err:
+                self.status = (
+                    "Couldn't reach the host. They may be on a different network, "
+                    "or their firewall is blocking the game. "
+                    "(For internet play, both PCs need a VPN like Hamachi/Tailscale.)"
+                )
+            elif "refused" in err or "10061" in err:
+                self.status = (
+                    "Connection refused — the host isn't hosting a game on that port."
+                )
+            else:
+                self.status = f"Couldn't connect: {self.client.last_error or 'unknown'}"
             self.client = None
 
     def update(self):
@@ -161,12 +174,29 @@ class JoinLobbyState(State):
             self.status = f"Disconnected: {self.client.last_error or 'connection closed'}"
             self.client = None
 
+    def _in_lobby(self) -> bool:
+        return (
+            self.client is not None
+            and self.client.connected
+            and self.my_player_id is not None
+        )
+
     def draw(self):
         draw_menu_background(self.surface, pygame.time.get_ticks())
+        if self._in_lobby():
+            self._draw_connected_view()
+        else:
+            self._draw_pre_connect_view()
+        self.back_button.draw(self.surface)
+        pygame.display.flip()
+
+    # ---- view: not connected yet ----
+
+    def _draw_pre_connect_view(self):
         title = self.title_font.render("JOIN", True, MENU_TITLE)
         self.surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 60))
 
-        # --- Discovered games on the LAN ---
+        # Discovered games on the LAN
         list_label = self.body_font.render("Games on your network:", True, MENU_TEXT_DIM)
         self.surface.blit(list_label, (SCREEN_WIDTH // 2 - list_label.get_width() // 2, 150))
 
@@ -210,7 +240,7 @@ class JoinLobbyState(State):
                 self.surface.blit(line1, (rect.x + 12, rect.y + 4))
                 self.surface.blit(line2, (rect.x + 12, rect.y + 24))
 
-        # --- Manual IP entry below the list ---
+        # Manual IP entry below the list
         manual_label = self.body_font.render("Or type an IP : Port", True, MENU_TEXT_DIM)
         self.surface.blit(manual_label, (SCREEN_WIDTH // 2 - manual_label.get_width() // 2, 420))
 
@@ -223,27 +253,101 @@ class JoinLobbyState(State):
             text = self.input_font.render(value, True, MENU_TEXT)
             self.surface.blit(text, text.get_rect(midleft=(rect.x + 8, rect.centery)))
 
-        # Status line.
-        status_color = MENU_TEXT if "Couldn" not in self.status else (220, 80, 80)
-        status = self.body_font.render(self.status, True, status_color)
-        self.surface.blit(status, (SCREEN_WIDTH // 2 - status.get_width() // 2, 590))
-
-        # Lobby roster (after we've connected and gotten an S_LOBBY).
-        if self.lobby_state is not None:
-            ypos = 640
-            roster_label = self.body_font.render("In lobby:", True, MENU_TEXT_DIM)
-            self.surface.blit(roster_label, (SCREEN_WIDTH // 2 - 100, ypos))
-            ypos += 30
-            host_line = self.body_font.render(
-                f"- {self.lobby_state.get('hosting_name', 'Host')} (host)", True, MENU_TEXT,
-            )
-            self.surface.blit(host_line, (SCREEN_WIDTH // 2 - 100, ypos))
-            ypos += 30
-            for p in self.lobby_state.get("players", []):
-                line = self.body_font.render(f"- {p.get('name', 'Player')}", True, MENU_TEXT)
-                self.surface.blit(line, (SCREEN_WIDTH // 2 - 100, ypos))
-                ypos += 30
+        # Status line — wrap long error text across two lines if needed.
+        status_color = (220, 80, 80) if (
+            "Couldn" in self.status or "Rejected" in self.status
+            or "Disconnected" in self.status or "refused" in self.status
+        ) else MENU_TEXT
+        self._blit_wrapped(
+            self.status, self.body_font, status_color,
+            center_x=SCREEN_WIDTH // 2, top_y=545, max_width=SCREEN_WIDTH - 60,
+        )
 
         self.connect_button.draw(self.surface)
-        self.back_button.draw(self.surface)
-        pygame.display.flip()
+
+    # ---- view: already in the lobby ----
+
+    def _draw_connected_view(self):
+        # Big green "IN LOBBY" badge so it's blindingly obvious that the
+        # connect step succeeded and you're now waiting on the host.
+        title = self.title_font.render("IN LOBBY", True, (90, 220, 90))
+        self.surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 80))
+
+        subtitle = self.body_font.render(
+            f"You are Player {self.my_player_id + 1}.  Waiting for the host to start.",
+            True, MENU_TEXT,
+        )
+        self.surface.blit(subtitle, (SCREEN_WIDTH // 2 - subtitle.get_width() // 2, 180))
+
+        # Roster panel
+        roster_top = 250
+        roster_x = SCREEN_WIDTH // 2 - 200
+        roster_w = 400
+        roster_h = 240
+        pygame.draw.rect(self.surface, (28, 28, 32),
+                         (roster_x, roster_top, roster_w, roster_h),
+                         border_radius=6)
+        pygame.draw.rect(self.surface, (80, 80, 90),
+                         (roster_x, roster_top, roster_w, roster_h),
+                         width=2, border_radius=6)
+        ypos = roster_top + 12
+        roster_label = self.body_font.render("Players in lobby:", True, MENU_TEXT_DIM)
+        self.surface.blit(roster_label, (roster_x + 16, ypos))
+        ypos += 36
+
+        if self.lobby_state is not None:
+            host_line = self.body_font.render(
+                f"  • {self.lobby_state.get('hosting_name', 'Host')}  (host)",
+                True, GOLD,
+            )
+            self.surface.blit(host_line, (roster_x + 16, ypos))
+            ypos += 32
+            for p in self.lobby_state.get("players", []):
+                marker = "you" if p.get("id") == self.my_player_id else ""
+                color = (90, 220, 90) if marker else MENU_TEXT
+                line = self.body_font.render(
+                    f"  • {p.get('name', 'Player')}  {marker}", True, color,
+                )
+                self.surface.blit(line, (roster_x + 16, ypos))
+                ypos += 32
+            map_line = self.small_font.render(
+                f"Map: {self.lobby_state.get('map_name', '?')}",
+                True, MENU_TEXT_DIM,
+            )
+            self.surface.blit(map_line, (roster_x + 16, roster_top + roster_h - 28))
+        else:
+            line = self.body_font.render(
+                "  ...waiting for lobby info...", True, MENU_TEXT_DIM,
+            )
+            self.surface.blit(line, (roster_x + 16, ypos))
+
+        # Hint
+        hint = self.small_font.render(
+            "Press ESC or click Back to leave the lobby.",
+            True, MENU_TEXT_DIM,
+        )
+        self.surface.blit(hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, 540))
+
+    def _blit_wrapped(self, text: str, font, color, *,
+                      center_x: int, top_y: int, max_width: int) -> None:
+        """Naive word-wrap blitter for status messages that may now be
+        sentence-long error hints."""
+        words = text.split(" ")
+        lines: list[str] = []
+        current = ""
+        for w in words:
+            trial = (current + " " + w).strip()
+            if font.size(trial)[0] <= max_width:
+                current = trial
+            else:
+                if current:
+                    lines.append(current)
+                current = w
+        if current:
+            lines.append(current)
+        for i, line in enumerate(lines):
+            rendered = font.render(line, True, color)
+            self.surface.blit(
+                rendered,
+                (center_x - rendered.get_width() // 2, top_y + i * (font.get_height() + 2)),
+            )
