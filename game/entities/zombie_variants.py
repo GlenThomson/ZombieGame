@@ -1,8 +1,9 @@
 """Zombie subclasses. Each just overrides a few attributes — the AI lives
 in the base Zombie class.
 
-Visual differentiation is done by tinting the base zombie sprite (no new art
-yet). Replace `_TINT` per class once real sprites land."""
+Most variants are tinted/scaled copies of the base zombie sprite.
+Hellhound has its own dedicated art (`hellhound.png`)."""
+import os
 import pygame
 
 from settings import TILE_SIZE
@@ -20,6 +21,17 @@ def _tinted_sprite(tint: tuple[int, int, int], scale_factor: float = 1.0) -> pyg
     overlay.fill((*tint, 110))
     out.blit(overlay, (0, 0), special_flags=pygame.BLEND_RGBA_MULT)
     return out
+
+
+def _hellhound_sprite(scale_factor: float = 0.7) -> pygame.Surface:
+    """Real top-down hellhound art when shipped; falls back to a tinted
+    zombie sprite if the asset is missing (e.g. someone's running a stale
+    checkout)."""
+    side = max(8, int(TILE_SIZE * scale_factor))
+    if os.path.isfile(os.path.join("assets", "images", "hellhound.png")):
+        base = assets.image("hellhound.png")
+        return pygame.transform.scale(base, (side, side))
+    return _tinted_sprite(Hellhound._TINT, scale_factor)
 
 
 class Crawler(Zombie):
@@ -59,18 +71,20 @@ class Runner(Zombie):
 
 
 class Hellhound(Zombie):
-    """Fast, low-HP sprinter. Pathfinds like a normal zombie (CoD hellhounds
-    navigate around walls — the original "always bee-line" implementation
-    just got them stuck on walls between them and the player)."""
+    """Fast, low-HP sprinter with its own art. Pathfinds like a normal
+    zombie (CoD hellhounds navigate around walls — the original "always
+    bee-line" implementation just got them stuck on walls between them
+    and the player)."""
     _SPEED_MULT = 2.2
     _SPEED_MAX = 5.5     # can catch up to a still player; barely outruns walker
     _HEALTH_MULT = 0.5
-    _SCALE = 0.7
-    _TINT = (40, 0, 90)
+    _SCALE = 0.85        # slightly larger than other variants so the dog
+                         # art reads as a real creature, not a tinted blob
+    _TINT = (40, 0, 90)  # used only as a fallback if hellhound.png is missing
 
     def __init__(self, scene, x: float, y: float):
         super().__init__(scene, x, y)
-        self.original_image = _tinted_sprite(self._TINT, self._SCALE)
+        self.original_image = _hellhound_sprite(self._SCALE)
         self.image = self.original_image.copy()
         self.rect = self.image.get_rect(center=(x, y))
         self.hit_box = pygame.Rect(0, 0, self.rect.width * 0.7, self.rect.height * 0.7)

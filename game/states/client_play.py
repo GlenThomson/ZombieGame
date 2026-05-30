@@ -278,13 +278,15 @@ class ClientPlayState(State):
         kind = z.get("type", "Zombie")
         img = self._zombie_images.get(kind)
         if img is None:
-            from game.entities.zombie_variants import _tinted_sprite, Crawler, Runner, Hellhound
+            from game.entities.zombie_variants import (
+                _tinted_sprite, _hellhound_sprite, Crawler, Runner, Hellhound,
+            )
             if kind == "Crawler":
                 img = _tinted_sprite(Crawler._TINT, Crawler._SCALE)
             elif kind == "Runner":
                 img = _tinted_sprite(Runner._TINT)
             elif kind == "Hellhound":
-                img = _tinted_sprite(Hellhound._TINT, Hellhound._SCALE)
+                img = _hellhound_sprite(Hellhound._SCALE)
             else:
                 img = assets.image("zombie.png", scale=(TILE_SIZE, TILE_SIZE))
             self._zombie_images[kind] = img
