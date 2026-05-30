@@ -5,9 +5,21 @@ Runs on Windows, macOS, and Linux.
 
 ## Run
 
-### Windows (pre-built .exe — easiest)
-Download `Zombies.exe` from the latest release / `dist/` folder and
-double-click. Nothing else to install.
+### Pre-built binaries (easiest — no Python needed)
+Grab the build for your OS from the
+[Releases page](../../releases/latest):
+
+- **Windows**: download `Zombies-Windows.exe`, double-click.
+  (Windows SmartScreen may show "Unrecognized publisher" on first run —
+  click "More info" → "Run anyway".)
+- **macOS**: download `Zombies-macOS`. First run only, you may need to
+  right-click → Open (Gatekeeper blocks unsigned binaries by default),
+  then "Open" in the dialog that appears.
+- **Linux**: download `Zombies-Linux`, then in a terminal:
+  `chmod +x Zombies-Linux && ./Zombies-Linux`
+
+These are auto-built by GitHub Actions on every push, so the latest
+Release always matches the latest code.
 
 ### Windows (from source)
 Double-click `run.bat`. First run creates a `.venv` and installs pygame;

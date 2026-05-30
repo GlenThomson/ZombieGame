@@ -1,0 +1,119 @@
+# Build Zombies for Windows, macOS, and Linux on every push.
+#
+# Two flows:
+#   - push to any branch (incl. main): build all three OSes, upload each
+#     binary as a workflow artifact you can download from the Actions tab
+#     (kept for ~90 days).
+#   - push of a version tag like v1.2.0: build all three, then create a
+#     GitHub Release with the binaries attached so non-tech friends can
+#     download them straight from the repo's Releases page.
+#
+# To cut a release: git tag v1.0.0 && git push --tags
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+  # Lets you trigger a build manually from the GitHub Actions tab too.
+  workflow_dispatch:
+
+jobs:
+  build:
+    name: build (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: Zombies-Windows
+            binary_path: dist/Zombies.exe
+            asset_name: Zombies-Windows.exe
+          - os: macos-latest
+            artifact_name: Zombies-macOS
+            binary_path: dist/Zombies
+            asset_name: Zombies-macOS
+          - os: ubuntu-latest
+            artifact_name: Zombies-Linux
+            binary_path: dist/Zombies
+            asset_name: Zombies-Linux
+
+    steps:
+      - name: Check out repo
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      # Linux needs a couple of SDL-related dev libraries so pygame can
+      # build/run. macOS + Windows ship these in the pygame wheels already.
+      - name: Install Linux SDL deps
+        if: matrix.os == 'ubuntu-latest'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libsdl2-dev libsdl2-image-dev libsdl2-mixer-dev libsdl2-ttf-dev \
+            libfreetype6-dev libportmidi-dev
+
+      - name: Install Python deps
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+          python -m pip install pyinstaller
+
+      - name: Build with PyInstaller
+        run: python -m PyInstaller Zombies.spec --noconfirm
+
+      # Rename so the uploaded artifact / release asset has an OS-specific
+      # name (otherwise they'd all be called "Zombies" and clobber each
+      # other when downloaded to the same folder).
+      - name: Rename binary
+        shell: bash
+        run: |
+          mkdir -p out
+          cp "${{ matrix.binary_path }}" "out/${{ matrix.asset_name }}"
+
+      - name: Upload workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: out/${{ matrix.asset_name }}
+          if-no-files-found: error
+          retention-days: 90
+
+  # Only runs when a git tag like "v1.0.0" is pushed. Pulls the per-OS
+  # artifacts from the matrix jobs above and attaches them to a GitHub
+  # Release that anyone can download from the repo's Releases page.
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Flatten artifacts into a single dir
+        run: |
+          mkdir -p release
+          # actions/download-artifact@v4 unpacks each artifact into its own
+          # subdirectory; pull all leaf files up into release/.
+          find artifacts -type f -exec mv {} release/ \;
+          ls -la release
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: release/*
+          generate_release_notes: true
+          fail_on_unmatched_files: true
