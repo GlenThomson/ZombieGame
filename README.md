@@ -1,14 +1,34 @@
 # ZombieGame
 
-Top-down zombies in pygame.
+Top-down zombies in pygame. Single-player or LAN multiplayer (up to 4).
+Runs on Windows, macOS, and Linux.
 
 ## Run
 
+### Windows (pre-built .exe — easiest)
+Download `Zombies.exe` from the latest release / `dist/` folder and
+double-click. Nothing else to install.
+
+### Windows (from source)
+Double-click `run.bat`. First run creates a `.venv` and installs pygame;
+subsequent runs just launch the game.
+
+### macOS / Linux (from source)
+In Terminal, from the repo root:
+
 ```
-python main.py
+./run.sh
 ```
 
-(or hit F5 in VS Code on `main.py` after selecting the `.venv` interpreter)
+(Needs Python 3.10+ on your PATH. If `./run.sh` says permission denied,
+do `chmod +x run.sh` first.)
+
+### Multiplayer notes
+- Same-network play: click HOST on one PC, click JOIN on the other —
+  the game will show up in the discovered-games list automatically.
+- Cross-network play: easiest is installing [Tailscale](https://tailscale.com)
+  on both PCs. The game thinks it's on a LAN and discovery still works.
+- Windows + Mac players can play together; the protocol is platform-agnostic.
 
 ## Project layout
 
