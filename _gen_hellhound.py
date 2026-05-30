@@ -52,11 +52,13 @@ def main():
     cy = RENDER // 2
 
     # -------- Tail (drawn first so the body covers its base) --------
+    # Origin moved back (0.20 → still on the body's back edge once the
+    # body is elongated below). Curls up and back-left.
     tail_pts = []
     for i in range(0, 22):
         t = i / 21
-        x = int(RENDER * (0.30 - t * 0.28))
-        y = int(cy - math.sin(t * math.pi * 0.9) * RENDER * 0.20
+        x = int(RENDER * (0.18 - t * 0.16))
+        y = int(cy - math.sin(t * math.pi * 0.9) * RENDER * 0.18
                    - t * RENDER * 0.06)
         tail_pts.append((x, y))
     for layer_w, color in ((18, OUTLINE), (14, FUR_DARK), (10, FUR), (6, FUR_LIGHT)):
@@ -64,40 +66,41 @@ def main():
             taper = max(1, int(layer_w * (1 - i / len(tail_pts))))
             pygame.draw.line(surf, color, tail_pts[i], tail_pts[i + 1], taper + 2)
 
-    # -------- Body (slightly wider/taller now that there are no legs
-    #          poking out — keeps the overall sprite footprint similar) --
-    body_cx = int(RENDER * 0.50)
-    body_w = int(RENDER * 0.56)
-    body_h = int(RENDER * 0.48)
+    # -------- Body (elongated dog shape: noticeably longer than tall now
+    #          that legs are tucked in). Shifted slightly left so the
+    #          head can still sit clearly at the front. --------
+    body_cx = int(RENDER * 0.44)
+    body_w = int(RENDER * 0.82)
+    body_h = int(RENDER * 0.40)
     ellipse_o(surf, body_cx, cy, body_w, body_h, FUR, outline_width=14)
     # Spine highlight along the top of the back
     pygame.draw.ellipse(
         surf, FUR_LIGHT,
-        pygame.Rect(body_cx - int(body_w * 0.38), cy - int(body_h * 0.30),
-                    int(body_w * 0.72), int(body_h * 0.34)),
+        pygame.Rect(body_cx - int(body_w * 0.40), cy - int(body_h * 0.32),
+                    int(body_w * 0.78), int(body_h * 0.34)),
     )
     # Belly shadow underneath
     pygame.draw.ellipse(
         surf, BELLY,
-        pygame.Rect(body_cx - int(body_w * 0.32), cy + int(body_h * 0.04),
-                    int(body_w * 0.64), int(body_h * 0.30)),
+        pygame.Rect(body_cx - int(body_w * 0.34), cy + int(body_h * 0.04),
+                    int(body_w * 0.68), int(body_h * 0.30)),
     )
 
-    # -------- Paws: only small darker bumps that just kiss the body
-    #          edge so it reads as a four-legged creature without the
-    #          legs sticking out as stilts. Two hind + two front. --------
+    # -------- Paws: small darker bumps just inside the body edge so the
+    #          creature reads as 4-legged without the stilts. Spread them
+    #          along the now-longer body. --------
     paw_w = int(RENDER * 0.10)
     paw_h = int(RENDER * 0.08)
     for sign in (-1, 1):
-        # Hind paws — just inside the back-quarter of the body
-        hpx = int(RENDER * 0.36)
+        # Hind paws — back end of the body
+        hpx = int(RENDER * 0.18)
         hpy = cy + sign * int(body_h * 0.46)
         pygame.draw.ellipse(
             surf, FUR_DARK,
             pygame.Rect(hpx - paw_w // 2, hpy - paw_h // 2, paw_w, paw_h),
         )
-        # Front paws — just inside the front-quarter of the body
-        fpx = int(RENDER * 0.60)
+        # Front paws — under the front of the body, just behind the head
+        fpx = int(RENDER * 0.62)
         fpy = cy + sign * int(body_h * 0.46)
         pygame.draw.ellipse(
             surf, FUR_DARK,
