@@ -13,15 +13,22 @@ EFFECT_BANNERS = {
 }
 
 
-def draw_active_effects(surface, effects: list[tuple[str, int]]):
+def draw_active_effects(surface, effects: list[tuple[str, int]],
+                        local_player_id: int | None = None):
     """Top-centre banner for each active power-up: name + seconds left.
-    `effects` is a list of (effect_name, remaining_ms)."""
+    `effects` is a list of (effect_name, remaining_ms). Per-player effects
+    (keys like "death_machine_2") only show on that player's screen."""
     if not effects:
         return
     font = pygame.font.Font(None, 34)
     y = 12
     for name, remaining_ms in sorted(effects):
-        label, color = EFFECT_BANNERS.get(name, (name.upper(), (220, 220, 220)))
+        if name.startswith("death_machine_"):
+            if local_player_id is not None and not name.endswith(f"_{local_player_id}"):
+                continue
+            label, color = "DEATH MACHINE", (255, 80, 80)
+        else:
+            label, color = EFFECT_BANNERS.get(name, (name.upper(), (220, 220, 220)))
         secs = max(0, remaining_ms) // 1000
         text = font.render(f"{label}  {secs}s", True, color)
         bg = pygame.Surface((text.get_width() + 20, text.get_height() + 8), pygame.SRCALPHA)
@@ -30,6 +37,41 @@ def draw_active_effects(surface, effects: list[tuple[str, int]]):
         surface.blit(bg, bg.get_rect(midtop=(cx, y)))
         surface.blit(text, text.get_rect(midtop=(cx, y + 4)))
         y += text.get_height() + 14
+
+
+def draw_scoreboard(surface, rows: list[dict], local_player_id: int | None = None):
+    """Hold-Tab scoreboard. `rows`: dicts with name/points/kills/headshots/
+    downs (+ id). Sorted by points, local player highlighted."""
+    rows = sorted(rows, key=lambda r: -int(r.get("points", 0)))
+    font_h = pygame.font.Font(None, 30)
+    font_r = pygame.font.Font(None, 32)
+    cols = [("PLAYER", 220), ("POINTS", 110), ("KILLS", 90),
+            ("HEADSHOTS", 130), ("DOWNS", 90)]
+    width = sum(w for _, w in cols) + 40
+    height = 70 + 40 * len(rows)
+    panel = pygame.Rect(0, 0, width, height)
+    panel.center = (SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)
+    bg = pygame.Surface(panel.size, pygame.SRCALPHA)
+    bg.fill((10, 10, 14, 225))
+    surface.blit(bg, panel.topleft)
+    pygame.draw.rect(surface, (120, 100, 30), panel, width=2, border_radius=4)
+
+    x = panel.x + 20
+    for title, w in cols:
+        surface.blit(font_h.render(title, True, (150, 150, 150)), (x, panel.y + 16))
+        x += w
+    y = panel.y + 56
+    for r in rows:
+        is_me = local_player_id is not None and r.get("id") == local_player_id
+        color = GOLD if is_me else (220, 220, 220)
+        x = panel.x + 20
+        vals = [str(r.get("name", "?"))[:14], str(r.get("points", 0)),
+                str(r.get("kills", 0)), str(r.get("headshots", 0)),
+                str(r.get("downs", 0))]
+        for (_, w), val in zip(cols, vals):
+            surface.blit(font_r.render(val, True, color), (x, y))
+            x += w
+        y += 40
 
 
 class HUD:
@@ -123,7 +165,7 @@ class HUD:
         draw_active_effects(surface, [
             (name, expiry - now)
             for name, (expiry, _) in scene.timed_effects.items()
-        ])
+        ], local_player_id=scene.local_player.player_id)
 
     def _draw_health_bar(self, surface, player):
         bar_w_max = 150

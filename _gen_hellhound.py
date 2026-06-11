@@ -1,10 +1,8 @@
-"""Generate assets/images/hellhound.png — a top-down hellhound sprite.
+"""Generate assets/images/hellhound.png — a top-down hellhound in a
+RUNNING pose: tapered two-part body (chest + hips), legs extended in a
+sprint stride, swept-back ears, straight tail, glowing eyes.
 
-Stylised brown dog version, with the legs tucked under the body instead
-of sticking straight out the sides (the previous version's "legs poking
-out" silhouette looked off when rotated in game).
-
-Drawn at 4x then smoothscale'd down. Run once:
+Drawn at 4x then smoothscale'd. Run once:
     python _gen_hellhound.py
 """
 import math
@@ -21,181 +19,168 @@ OUT_SIZE = 64
 SCALE = 4
 RENDER = OUT_SIZE * SCALE   # 256
 
-# ---- Style: stylised cartoony, very bold outlines ----
-# The dog FACES +X (east), so head/snout point right.
-# Bold colours + outlines so the silhouette stays readable at the
-# ~32 px size the game renders it at.
-
-OUTLINE = (12, 8, 6)                # near-black
-FUR = (98, 50, 28)                  # rich warm brown
-FUR_DARK = (54, 26, 14)
-FUR_LIGHT = (148, 84, 46)
-BELLY = (74, 38, 22)
-EAR_INNER = (180, 70, 60)           # pinkish hellhound ear
-NOSE = (16, 8, 8)
-TEETH = (245, 235, 200)
-MOUTH = (130, 22, 22)
-TONGUE = (210, 60, 80)
-EYE_GLOW = (255, 110, 30)
-EYE_HOT = (255, 240, 200)
+# Dark demonic dog: near-black body, warm brown highlights, ember eyes.
+OUTLINE = (8, 5, 4)
+FUR = (52, 32, 22)
+FUR_DARK = (30, 18, 12)
+FUR_LIGHT = (96, 62, 40)
+FUR_SPINE = (130, 88, 56)
+EAR_INNER = (110, 45, 35)
+NOSE = (12, 8, 8)
+MOUTH = (120, 20, 20)
+TEETH = (235, 228, 198)
+EYE_GLOW = (255, 100, 25)
+EYE_HOT = (255, 235, 190)
 
 
-def ellipse_o(surf, cx, cy, w, h, fill, outline_width=10):
-    """Filled ellipse with a fat outline."""
-    rect = pygame.Rect(cx - w // 2, cy - h // 2, w, h)
-    pygame.draw.ellipse(surf, OUTLINE, rect.inflate(outline_width, outline_width))
-    pygame.draw.ellipse(surf, fill, rect)
+def ellipse(surf, cx, cy, w, h, color):
+    surf_rect = pygame.Rect(int(cx - w / 2), int(cy - h / 2), int(w), int(h))
+    pygame.draw.ellipse(surf, color, surf_rect)
+
+
+def capsule(surf, p1, p2, width, color):
+    pygame.draw.line(surf, color, p1, p2, width)
+    pygame.draw.circle(surf, color, p1, width // 2)
+    pygame.draw.circle(surf, color, p2, width // 2)
+
+
+def leg(surf, hip, knee, paw, thickness):
+    """Two-segment leg with outline + fill + paw."""
+    for pts, w, col in (
+        ((hip, knee), thickness + 8, OUTLINE),
+        ((knee, paw), thickness + 6, OUTLINE),
+        ((hip, knee), thickness, FUR),
+        ((knee, paw), thickness - 2, FUR_DARK),
+    ):
+        capsule(surf, pts[0], pts[1], w, col)
+    pygame.draw.circle(surf, OUTLINE, paw, thickness // 2 + 4)
+    pygame.draw.circle(surf, FUR_DARK, paw, thickness // 2 + 1)
 
 
 def main():
-    surf = pygame.Surface((RENDER, RENDER), pygame.SRCALPHA)
+    s = pygame.Surface((RENDER, RENDER), pygame.SRCALPHA)
     cy = RENDER // 2
+    R = RENDER
 
-    # -------- Tail (drawn first so the body covers its base) --------
-    # Origin moved back (0.20 → still on the body's back edge once the
-    # body is elongated below). Curls up and back-left.
-    tail_pts = []
-    for i in range(0, 22):
-        t = i / 21
-        x = int(RENDER * (0.18 - t * 0.16))
-        y = int(cy - math.sin(t * math.pi * 0.9) * RENDER * 0.18
-                   - t * RENDER * 0.06)
-        tail_pts.append((x, y))
-    for layer_w, color in ((18, OUTLINE), (14, FUR_DARK), (10, FUR), (6, FUR_LIGHT)):
-        for i in range(len(tail_pts) - 1):
-            taper = max(1, int(layer_w * (1 - i / len(tail_pts))))
-            pygame.draw.line(surf, color, tail_pts[i], tail_pts[i + 1], taper + 2)
+    hips = (int(R * 0.30), cy)
+    chest = (int(R * 0.56), cy)
+    head = (int(R * 0.76), cy)
 
-    # -------- Body (elongated dog shape: noticeably longer than tall now
-    #          that legs are tucked in). Shifted slightly left so the
-    #          head can still sit clearly at the front. --------
-    body_cx = int(RENDER * 0.44)
-    body_w = int(RENDER * 0.82)
-    body_h = int(RENDER * 0.40)
-    ellipse_o(surf, body_cx, cy, body_w, body_h, FUR, outline_width=14)
-    # Spine highlight along the top of the back
-    pygame.draw.ellipse(
-        surf, FUR_LIGHT,
-        pygame.Rect(body_cx - int(body_w * 0.40), cy - int(body_h * 0.32),
-                    int(body_w * 0.78), int(body_h * 0.34)),
-    )
-    # Belly shadow underneath
-    pygame.draw.ellipse(
-        surf, BELLY,
-        pygame.Rect(body_cx - int(body_w * 0.34), cy + int(body_h * 0.04),
-                    int(body_w * 0.68), int(body_h * 0.30)),
-    )
-
-    # -------- Paws: small darker bumps just inside the body edge so the
-    #          creature reads as 4-legged without the stilts. Spread them
-    #          along the now-longer body. --------
-    paw_w = int(RENDER * 0.10)
-    paw_h = int(RENDER * 0.08)
-    for sign in (-1, 1):
-        # Hind paws — back end of the body
-        hpx = int(RENDER * 0.18)
-        hpy = cy + sign * int(body_h * 0.46)
-        pygame.draw.ellipse(
-            surf, FUR_DARK,
-            pygame.Rect(hpx - paw_w // 2, hpy - paw_h // 2, paw_w, paw_h),
-        )
-        # Front paws — under the front of the body, just behind the head
-        fpx = int(RENDER * 0.62)
-        fpy = cy + sign * int(body_h * 0.46)
-        pygame.draw.ellipse(
-            surf, FUR_DARK,
-            pygame.Rect(fpx - paw_w // 2, fpy - paw_h // 2, paw_w, paw_h),
-        )
-
-    # -------- Head — sits clearly to the right of the body --------
-    head_cx = int(RENDER * 0.74)
-    head_w = int(RENDER * 0.38)
-    head_h = int(RENDER * 0.40)
-    ellipse_o(surf, head_cx, cy + 4, head_w, head_h, FUR, outline_width=14)
-    # Forehead shine
-    pygame.draw.ellipse(
-        surf, FUR_LIGHT,
-        pygame.Rect(head_cx - int(head_w * 0.30), cy - int(head_h * 0.28),
-                    int(head_w * 0.60), int(head_h * 0.32)),
-    )
-
-    # -------- Ears — bold pointy triangles atop the head, going up & out --
-    for side in (-1, 1):
-        base_a = (head_cx - int(head_w * 0.16),
-                  cy + side * int(head_h * 0.38))
-        base_b = (head_cx + int(head_w * 0.08),
-                  cy + side * int(head_h * 0.30))
-        tip = (head_cx - int(head_w * 0.22),
-               cy + side * int(head_h * 0.78))
-        outline = [(p[0], p[1]) for p in (base_a, tip, base_b)]
-        for d in range(-6, 7, 2):
-            shifted = [(p[0] + d, p[1] + side * d) for p in outline]
-            pygame.draw.polygon(surf, OUTLINE, shifted)
-        pygame.draw.polygon(surf, FUR_DARK, outline)
-        inner = [
-            ((base_a[0] + base_b[0]) // 2, (base_a[1] + base_b[1]) // 2),
-            (tip[0] + 8, tip[1] - side * 4),
-            (base_b[0] - 8, base_b[1] + side * 6),
-        ]
-        pygame.draw.polygon(surf, EAR_INNER, inner)
-
-    # -------- Snout & teeth --------
-    snout_back_x = head_cx + int(head_w * 0.22)
-    snout_tip_x = int(RENDER * 0.96)
-    snout_back_y_top = cy - int(head_h * 0.20)
-    snout_back_y_bot = cy + int(head_h * 0.28)
-    snout_pts = [
-        (snout_back_x, snout_back_y_top),
-        (snout_tip_x - 12, cy + 2),
-        (snout_back_x, snout_back_y_bot),
+    # ---------- tail: straight back with a slight upward kink ----------
+    tail_pts = [
+        (hips[0], cy),
+        (int(R * 0.16), cy - int(R * 0.03)),
+        (int(R * 0.05), cy - int(R * 0.09)),
     ]
-    for d in range(-6, 7, 2):
-        pygame.draw.polygon(surf, OUTLINE,
-                            [(p[0], p[1] + d) for p in snout_pts])
-    pygame.draw.polygon(surf, FUR, snout_pts)
-    mouth_y = cy + 6
-    pygame.draw.polygon(surf, MOUTH, [
-        (snout_back_x + 20, mouth_y - 18),
-        (snout_tip_x - 24, mouth_y - 2),
-        (snout_back_x + 20, mouth_y + 14),
+    for w, col in ((26, OUTLINE), (16, FUR), (8, FUR_LIGHT)):
+        pygame.draw.lines(s, col, False, tail_pts, w)
+
+    # ---------- legs (under/behind body, sprint stride) ----------
+    th = 22
+    # hind legs: extended BACK (top one pushed off, bottom mid-stride)
+    leg(s, (hips[0] + 8, cy - int(R * 0.10)),
+        (hips[0] - int(R * 0.12), cy - int(R * 0.16)),
+        (hips[0] - int(R * 0.22), cy - int(R * 0.13)), th)
+    leg(s, (hips[0] + 8, cy + int(R * 0.10)),
+        (hips[0] - int(R * 0.10), cy + int(R * 0.17)),
+        (hips[0] - int(R * 0.20), cy + int(R * 0.15)), th)
+    # front legs: reaching FORWARD
+    leg(s, (chest[0] - 6, cy - int(R * 0.10)),
+        (chest[0] + int(R * 0.10), cy - int(R * 0.17)),
+        (chest[0] + int(R * 0.20), cy - int(R * 0.14)), th)
+    leg(s, (chest[0] - 6, cy + int(R * 0.10)),
+        (chest[0] + int(R * 0.12), cy + int(R * 0.16)),
+        (chest[0] + int(R * 0.22), cy + int(R * 0.13)), th)
+
+    # ---------- body: hips smaller, chest bigger, blended ----------
+    # outline pass
+    ellipse(s, hips[0], cy, R * 0.30 + 12, R * 0.26 + 12, OUTLINE)
+    ellipse(s, chest[0], cy, R * 0.34 + 12, R * 0.30 + 12, OUTLINE)
+    pygame.draw.polygon(s, OUTLINE, [
+        (hips[0], cy - int(R * 0.13) - 6), (chest[0], cy - int(R * 0.15) - 6),
+        (chest[0], cy + int(R * 0.15) + 6), (hips[0], cy + int(R * 0.13) + 6),
     ])
-    pygame.draw.ellipse(surf, TONGUE,
-                        pygame.Rect(snout_back_x + 30, mouth_y - 4, 36, 18))
+    # fur fill
+    ellipse(s, hips[0], cy, R * 0.30, R * 0.26, FUR)
+    ellipse(s, chest[0], cy, R * 0.34, R * 0.30, FUR)
+    pygame.draw.polygon(s, FUR, [
+        (hips[0], cy - int(R * 0.13)), (chest[0], cy - int(R * 0.15)),
+        (chest[0], cy + int(R * 0.15)), (hips[0], cy + int(R * 0.13)),
+    ])
+    # flank shading (darker lower flank = light from top-left)
+    ellipse(s, hips[0] + 10, cy + int(R * 0.07), R * 0.26, R * 0.10, FUR_DARK)
+    # spine highlight strip
+    spine_pts = [(hips[0] - int(R * 0.10), cy - 4),
+                 (hips[0] + 20, cy - int(R * 0.06)),
+                 (chest[0], cy - int(R * 0.07)),
+                 (chest[0] + int(R * 0.10), cy - 4)]
+    pygame.draw.lines(s, FUR_LIGHT, False, spine_pts, 18)
+    pygame.draw.lines(s, FUR_SPINE, False, spine_pts, 8)
+    # raised hackles along the spine (spiky fur)
+    for i, (px, py) in enumerate(spine_pts[:-1]):
+        nx, ny = spine_pts[i + 1]
+        for t in (0.25, 0.65):
+            bx, by = px + (nx - px) * t, py + (ny - py) * t
+            pygame.draw.polygon(s, FUR_DARK, [
+                (bx - 7, by + 2), (bx + 1, by - 14), (bx + 9, by + 2)])
+
+    # ---------- head + snout ----------
+    ellipse(s, head[0], cy, R * 0.24 + 10, R * 0.24 + 10, OUTLINE)
+    ellipse(s, head[0], cy, R * 0.24, R * 0.24, FUR)
+    ellipse(s, head[0] - 4, cy - int(R * 0.05), R * 0.16, R * 0.10, FUR_LIGHT)
+    # snout wedge
+    snout_tip = (int(R * 0.95), cy + 2)
+    snout = [
+        (head[0] + int(R * 0.05), cy - int(R * 0.085)),
+        snout_tip,
+        (head[0] + int(R * 0.05), cy + int(R * 0.10)),
+    ]
+    pygame.draw.polygon(s, OUTLINE, [
+        (snout[0][0] - 4, snout[0][1] - 5), (snout_tip[0] + 5, snout_tip[1]),
+        (snout[2][0] - 4, snout[2][1] + 5)])
+    pygame.draw.polygon(s, FUR, snout)
+    # open jaw
+    pygame.draw.polygon(s, MOUTH, [
+        (head[0] + int(R * 0.10), cy + 1),
+        (snout_tip[0] - 10, cy + 1),
+        (head[0] + int(R * 0.11), cy + int(R * 0.07)),
+    ])
     for i in range(3):
-        tx = snout_back_x + 32 + i * 22
-        pygame.draw.polygon(surf, TEETH, [
-            (tx, mouth_y - 18),
-            (tx + 10, mouth_y - 4),
-            (tx - 6, mouth_y - 6),
-        ])
-    for i in range(2):
-        tx = snout_back_x + 42 + i * 24
-        pygame.draw.polygon(surf, TEETH, [
-            (tx, mouth_y + 14),
-            (tx + 10, mouth_y + 2),
-            (tx - 6, mouth_y + 4),
-        ])
-    pygame.draw.circle(surf, OUTLINE, (snout_tip_x - 8, cy - 2), 14)
-    pygame.draw.circle(surf, NOSE, (snout_tip_x - 8, cy - 2), 11)
-    pygame.draw.circle(surf, (90, 50, 50), (snout_tip_x - 12, cy - 4), 3)
+        tx = head[0] + int(R * 0.12) + i * 14
+        pygame.draw.polygon(s, TEETH, [
+            (tx, cy + 1), (tx + 5, cy + 7), (tx + 10, cy + 1)])
+    pygame.draw.circle(s, OUTLINE, (snout_tip[0] - 4, snout_tip[1] - 3), 10)
+    pygame.draw.circle(s, NOSE, (snout_tip[0] - 4, snout_tip[1] - 3), 7)
 
-    # -------- Glowing red eyes --------
+    # ---------- ears: swept back along the head ----------
     for side in (-1, 1):
-        ex = head_cx + int(head_w * 0.05)
-        ey = cy + side * int(head_h * 0.20)
-        ellipse_o(surf, ex, ey, 30, 22, FUR_DARK, outline_width=4)
-        halo = pygame.Surface((80, 80), pygame.SRCALPHA)
-        for r, a in ((36, 50), (24, 110), (14, 200), (7, 250)):
-            pygame.draw.circle(halo, (*EYE_GLOW, a), (40, 40), r)
-        surf.blit(halo, (ex - 40, ey - 40))
-        pygame.draw.circle(surf, EYE_HOT, (ex, ey), 5)
-        pygame.draw.circle(surf, OUTLINE, (ex, ey), 5, 2)
+        base = (head[0] - int(R * 0.02), cy + side * int(R * 0.10))
+        tip = (head[0] - int(R * 0.16), cy + side * int(R * 0.20))
+        wide = (head[0] + int(R * 0.05), cy + side * int(R * 0.13))
+        pygame.draw.polygon(s, OUTLINE, [
+            (base[0] - 4, base[1]), (tip[0] - 6, tip[1] + side * 4),
+            (wide[0] + 4, wide[1] + side * 4)])
+        pygame.draw.polygon(s, FUR_DARK, [base, tip, wide])
+        pygame.draw.polygon(s, EAR_INNER, [
+            (base[0] - 2, base[1] + side * 2),
+            (tip[0] + 6, tip[1]),
+            (wide[0] - 4, wide[1])])
 
-    out = pygame.transform.smoothscale(surf, (OUT_SIZE, OUT_SIZE))
+    # ---------- glowing eyes ----------
+    for side in (-1, 1):
+        ex = head[0] + int(R * 0.045)
+        ey = cy + side * int(R * 0.065)
+        halo = pygame.Surface((56, 56), pygame.SRCALPHA)
+        for r, a in ((26, 45), (17, 110), (10, 190), (5, 255)):
+            pygame.draw.circle(halo, (*EYE_GLOW, a), (28, 28), r)
+        s.blit(halo, (ex - 28, ey - 28))
+        pygame.draw.circle(s, EYE_HOT, (ex, ey), 4)
+
+    out = pygame.transform.smoothscale(s, (OUT_SIZE, OUT_SIZE))
     os.makedirs(os.path.join("assets", "images"), exist_ok=True)
     out_path = os.path.join("assets", "images", "hellhound.png")
     pygame.image.save(out, out_path)
-    print(f"wrote {out_path} ({OUT_SIZE}x{OUT_SIZE} from {RENDER}x{RENDER} master)")
+    print(f"wrote {out_path}")
 
 
 if __name__ == "__main__":

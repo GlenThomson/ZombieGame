@@ -70,6 +70,11 @@ class Player(pygame.sprite.Sprite):
         self.inventory.add("Pistol")
         self.inventory.equip(0)
 
+        # Temporary weapon override (Death Machine power-up). While set,
+        # `self.weapon` returns this instead of the inventory slot.
+        self.weapon_override = None
+        self.downs: int = 0   # scoreboard stat
+
         # Down + revive state. When down the player can't move but CAN
         # shoot a fixed last-stand pistol (M1911) while crawling.
         self.is_down: bool = False
@@ -136,6 +141,8 @@ class Player(pygame.sprite.Sprite):
 
     def go_down(self):
         from settings import PLAYER_BLEED_OUT_MS
+        self.downs += 1
+        self.weapon_override = None  # drop the Death Machine when downed
         self.is_down = True
         self.bleed_out_at_ms = pygame.time.get_ticks() + PLAYER_BLEED_OUT_MS
         self.revive_progress_ms = 0
@@ -168,6 +175,8 @@ class Player(pygame.sprite.Sprite):
 
     @property
     def weapon(self):
+        if self.weapon_override is not None:
+            return self.weapon_override
         return self.inventory.equipped
 
     def _movement(self, snap: InputState):

@@ -134,6 +134,10 @@ def _player_dict(player, scene) -> dict:
         "grenades": int(player.grenade_count),
         "monkey_bombs": int(player.monkey_bomb_count),
         "is_dead": bool(player.is_dead()),
+        # Scoreboard stats
+        "kills": int(player.kills),
+        "headshots": int(player.headshot_kills),
+        "downs": int(player.downs),
     }
 
 

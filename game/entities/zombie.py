@@ -203,6 +203,22 @@ class Zombie(pygame.sprite.Sprite):
             return False
         return True
 
+    def make_crawler(self):
+        """Blow the legs off: the zombie survives but drags itself slowly
+        (BO1 grenade-crawler). Visual: shrunk sprite. Idempotent."""
+        if getattr(self, "_is_crawler", False):
+            return
+        self._is_crawler = True
+        self.speed_base = min(self.speed_base, ZOMBIE_SPEED_BASE) * 0.45
+        self.speed = self.speed_base
+        w, h = self.original_image.get_size()
+        self.original_image = pygame.transform.scale(
+            self.original_image, (max(8, int(w * 0.7)), max(8, int(h * 0.7))))
+        self.image = pygame.transform.rotate(self.original_image, -self.angle)
+        self.rect = self.image.get_rect(center=self.pos)
+        self.hit_box = pygame.Rect(0, 0, self.rect.width * 0.7, self.rect.height * 0.7)
+        self.hit_box.center = self.rect.center
+
     def take_damage(self, amount: int = 1):
         self.health -= amount
         BloodSplatter(self.scene, self.pos, duration_ms=10)

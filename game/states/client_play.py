@@ -269,7 +269,17 @@ class ClientPlayState(State):
         draw_active_effects(self.surface, [
             (e.get("name", ""), int(e.get("remaining_ms", 0)))
             for e in snap.get("active_effects", [])
-        ])
+        ], local_player_id=self.my_player_id)
+
+        # Hold Tab: scoreboard from the latest snapshot.
+        if pygame.key.get_pressed()[pygame.K_TAB]:
+            from game.ui.hud import draw_scoreboard
+            draw_scoreboard(self.surface, [
+                {"id": p.get("id"), "name": p.get("name", "?"),
+                 "points": p.get("points", 0), "kills": p.get("kills", 0),
+                 "headshots": p.get("headshots", 0), "downs": p.get("downs", 0)}
+                for p in snap.get("players", [])
+            ], local_player_id=self.my_player_id)
 
         # Round overlay
         countdown = snap.get("round_text_countdown", 0)
@@ -450,17 +460,25 @@ class ClientPlayState(State):
         rect = pygame.Rect(wx + cam_x, wy + cam_y, TILE_SIZE, TILE_SIZE)
         kind = it["type"]
 
+        # Wall buys use the shared icon+plaque builder so the name is
+        # readable on the client exactly like on the host.
+        if kind == "wall_buy":
+            from game.entities.wall_buy import build_wall_buy_image
+            weapon = str(it.get("weapon", ""))
+            cache_key = f"wall_buy::{weapon}"
+            img = self._zombie_images.get(cache_key)
+            if img is None:
+                img = build_wall_buy_image(weapon)
+                self._zombie_images[cache_key] = img
+            self.surface.blit(img, img.get_rect(midtop=(rect.centerx, rect.top)))
+            return
+
         png = self._sprite_for(kind, it)
         if png is not None and os.path.isfile(os.path.join("assets", "images", png)):
             img = assets.image(png)
             self.surface.blit(img, rect.topleft)
             # Overlays specific to certain types
-            if kind == "wall_buy":
-                from game.entities.wall_buy import _fit_label
-                weapon = str(it.get("weapon", ""))
-                label = _fit_label(weapon, GOLD, TILE_SIZE - 4)
-                self.surface.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - 1)))
-            elif kind == "mystery_box" and it.get("label"):
+            if kind == "mystery_box" and it.get("label"):
                 font = pygame.font.Font(None, 14)
                 label = font.render(str(it["label"]), True, (0, 0, 0))
                 self.surface.blit(label, label.get_rect(midbottom=(rect.centerx, rect.bottom - 4)))

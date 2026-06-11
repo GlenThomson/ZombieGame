@@ -12,6 +12,7 @@ CONTROLS: list[tuple[str, str]] = [
     ("G",            "throw grenade"),
     ("T",            "throw monkey bomb (if you have one)"),
     ("1 / 2 / 3",    "switch weapon slot"),
+    ("Tab (hold)",   "scoreboard"),
     ("P",            "pause (single-player only)"),
     ("ESC",          "leave game / back to menu"),
 ]

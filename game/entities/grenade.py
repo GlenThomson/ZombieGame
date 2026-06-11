@@ -115,6 +115,16 @@ class Grenade(pygame.sprite.Sprite):
         explosion_rect.center = self.rect.center
         self.explosion_sound.play()
         self.exploding = True
-        for zombie in self.scene.zombies:
-            if explosion_rect.colliderect(zombie.rect):
-                zombie.health -= GRENADE_DAMAGE
+        # BO1 blast model: full damage at the centre falling off toward the
+        # edge. Zombies that SURVIVE the blast lose their legs and crawl —
+        # this is how you make an end-of-round crawler on purpose.
+        cx, cy = self.rect.center
+        half = radius / 2
+        for zombie in list(self.scene.zombies):
+            if not explosion_rect.colliderect(zombie.rect):
+                continue
+            dist = ((zombie.pos.x - cx) ** 2 + (zombie.pos.y - cy) ** 2) ** 0.5
+            falloff = max(0.15, 1.0 - dist / max(1.0, half * 1.4))
+            zombie.take_damage(GRENADE_DAMAGE * falloff)
+            if zombie.alive() and zombie.health > 0:
+                zombie.make_crawler()

@@ -39,6 +39,9 @@ WEAPON_DEFS: dict[str, WeaponDef] = {
     # so the magazine just refills freely). Underpowered on purpose — you're
     # supposed to crawl to safety, not finish the round from down.
     "M1911": WeaponDef("M1911", bullet_speed=22, bullet_spread=4, fire_rate=3, damage=1, penetration=1, magazine_size=8, reload_time=1.6, reserve_max=0, shoot_sound="pistol_shot.mp3"),
+    # Death Machine: power-up minigun, NOT buyable or boxable. Held for 30s
+    # by whoever grabs the drop; effectively bottomless magazine.
+    "Death Machine": WeaponDef("Death Machine", bullet_speed=30, bullet_spread=7, fire_rate=15, damage=3, penetration=3, magazine_size=999, reload_time=0.1, reserve_max=0, shoot_sound="smg_shot.wav"),
     # Wonder weapons (mystery box only). Wunderwaffe = single very lethal
     # bolt with high penetration. Thundergun = wide cone like a giant
     # shotgun.

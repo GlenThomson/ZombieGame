@@ -883,6 +883,16 @@ class PlayState(State):
 
         self.hud.draw(self.surface, self)
 
+        # Hold Tab: scoreboard (works in SP too — shows your own stats).
+        if pygame.key.get_pressed()[pygame.K_TAB]:
+            from game.ui.hud import draw_scoreboard
+            draw_scoreboard(self.surface, [
+                {"id": p.player_id, "name": p.name, "points": p.points,
+                 "kills": p.kills, "headshots": p.headshot_kills,
+                 "downs": p.downs}
+                for p in self.players
+            ], local_player_id=self.local_player.player_id)
+
         if self.round_manager.round_text_countdown > 0:
             self._draw_round_text()
 

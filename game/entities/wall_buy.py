@@ -24,6 +24,34 @@ def _fit_label(text: str, color, max_width: int) -> pygame.Surface:
     return rendered  # smallest tried, even if it's still too wide
 
 
+def build_wall_buy_image(weapon_name: str) -> pygame.Surface:
+    """Wall-buy sprite: the gun icon on its tile with a READABLE name
+    plaque hanging beneath. The plaque is as wide as the name needs, not
+    crammed into 40px. Shared by host (WallBuy entity) and MP client."""
+    import os
+    from game import assets
+
+    font = pygame.font.Font(None, 20)
+    label = font.render(weapon_name, True, GOLD)
+    plaque_w = label.get_width() + 12
+    plaque_h = label.get_height() + 6
+    total_w = max(TILE_SIZE, plaque_w)
+    total_h = TILE_SIZE + plaque_h + 2
+
+    surf = pygame.Surface((total_w, total_h), pygame.SRCALPHA)
+    icon_x = total_w // 2 - TILE_SIZE // 2
+    if os.path.isfile(os.path.join("assets", "images", "wall_buy_generic.png")):
+        surf.blit(assets.image("wall_buy_generic.png"), (icon_x, 0))
+    else:
+        pygame.draw.rect(surf, (40, 40, 50), (icon_x, 0, TILE_SIZE, TILE_SIZE))
+        pygame.draw.rect(surf, GOLD, (icon_x, 0, TILE_SIZE, TILE_SIZE), 2)
+    plaque = pygame.Rect(total_w // 2 - plaque_w // 2, TILE_SIZE + 2, plaque_w, plaque_h)
+    pygame.draw.rect(surf, (12, 12, 16), plaque, border_radius=3)
+    pygame.draw.rect(surf, (120, 100, 30), plaque, width=1, border_radius=3)
+    surf.blit(label, label.get_rect(center=plaque.center))
+    return surf
+
+
 class WallBuy(pygame.sprite.Sprite):
     def __init__(self, scene, x_tile: int, y_tile: int, weapon_name: str):
         super().__init__(scene.all_sprites, scene.wall_buys)
@@ -38,19 +66,12 @@ class WallBuy(pygame.sprite.Sprite):
         self.buy_cost = wdef.wall_cost if wdef else WALL_BUY_BUY_COST
         self.ammo_cost = wdef.ammo_cost if wdef else WALL_BUY_AMMO_COST
 
-        import os
-        from game import assets
-        if os.path.isfile(os.path.join("assets", "images", "wall_buy_generic.png")):
-            self.image = assets.image("wall_buy_generic.png").copy()
-            label = _fit_label(weapon_name, GOLD, TILE_SIZE - 4)
-            self.image.blit(label, label.get_rect(midbottom=(TILE_SIZE // 2, TILE_SIZE - 1)))
-        else:
-            self.image = pygame.Surface((TILE_SIZE, TILE_SIZE))
-            self.image.fill((40, 40, 50))
-            pygame.draw.rect(self.image, GOLD, self.image.get_rect(), 2)
-            label = _fit_label(weapon_name, GOLD, TILE_SIZE - 4)
-            self.image.blit(label, label.get_rect(center=(TILE_SIZE // 2, TILE_SIZE // 2)))
-        self.rect = self.image.get_rect(topleft=(x_tile * TILE_SIZE, y_tile * TILE_SIZE))
+        self.image = build_wall_buy_image(weapon_name)
+        # The icon part of the image aligns with the tile; the name plaque
+        # hangs below into the room. Collision is grid-based (WALL_BUY tile)
+        # so the oversized rect is visual-only.
+        self.rect = self.image.get_rect(
+            midtop=(x_tile * TILE_SIZE + TILE_SIZE // 2, y_tile * TILE_SIZE))
 
     def get_world_pos(self) -> tuple[float, float]:
         return (self.rect.centerx, self.rect.centery)

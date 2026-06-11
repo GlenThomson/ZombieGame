@@ -50,23 +50,9 @@ class RoundManager:
                 self.zombies_to_spawn -= 1
         elif len(self.scene.zombies) == 0:
             self._begin_next_round()
-        else:
-            self._maybe_make_end_round_crawler()
-
-    def _maybe_make_end_round_crawler(self):
-        """When all spawning is done and only the last zombie remains, slow
-        it to a crawl so the player has time to buy perks / refill ammo
-        before triggering the next round (CoD: 'last zombie crawler')."""
-        if self.zombies_to_spawn != 0:
-            return
-        if len(self.scene.zombies) != 1:
-            return
-        last = next(iter(self.scene.scene.zombies)) if False else next(iter(self.scene.zombies))
-        if getattr(last, "_end_round_crawler", False):
-            return
-        last._end_round_crawler = True
-        last.speed_base = 0.4
-        last.speed = 0.4
+        # No automatic end-of-round crawler: BO1 players MAKE a crawler by
+        # legging a zombie with a grenade (see Grenade._explode), so the
+        # last walker keeps full speed unless you earn the breather.
 
     def _spawn_one_zombie(self):
         if not self.scene.zombie_spawns:

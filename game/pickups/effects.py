@@ -118,6 +118,22 @@ def _monkey_bombs(scene, collector=None):
         collector.monkey_bomb_count = min(4, collector.monkey_bomb_count + 4)
 
 
+@effect("death_machine", weight=0.5, icon=("DM", (180, 40, 40)))
+def _death_machine(scene, collector=None):
+    """BO1: the collector wields a minigun with bottomless ammo for 30s.
+    Per-player effect — the timed-effect key carries the player id."""
+    if collector is None:
+        return
+    from game.weapons.weapon import Weapon
+    scene.announce_event("death_machine", {"sound": "instant_kill.mp3"})
+    dm = Weapon(collector, "Death Machine")
+    scene.start_timed_effect(
+        f"death_machine_{collector.player_id}", duration_ms=30_000,
+        on_apply=lambda: setattr(collector, "weapon_override", dm),
+        on_expire=lambda: setattr(collector, "weapon_override", None),
+    )
+
+
 @effect("fire_sale", weight=0.6, icon=("FS", (220, 60, 200)))
 def _fire_sale(scene, collector=None):
     """Mystery boxes drop to 10 points for 30 seconds."""
