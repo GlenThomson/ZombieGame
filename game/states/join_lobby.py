@@ -46,10 +46,42 @@ class JoinLobbyState(State):
         self.my_player_id: int | None = None
         self.lobby_state: dict | None = None
 
+        from game.ui.chat import ChatBox
+        self.chat = ChatBox()
+        self.ready = False
+        self.my_vote = ""
+        self._vote_row_rects: list[tuple[pygame.Rect, str]] = []
+
     def handle_event(self, event):
         if event.type == pygame.MOUSEMOTION:
             self.connect_button.update_hover(event.pos)
             self.back_button.update_hover(event.pos)
+        # ---- in-lobby controls: chat, ready, vote ----
+        if self._in_lobby():
+            if event.type == pygame.KEYDOWN:
+                if self.chat.active or event.key == pygame.K_RETURN:
+                    line = self.chat.handle_key(event)
+                    if line:
+                        self.client.send({"type": protocol.C_CHAT, "text": line})
+                    return
+                if event.key == pygame.K_r:
+                    self.ready = not self.ready
+                    self.client.send({"type": protocol.C_READY, "ready": self.ready})
+                    return
+                if event.key == pygame.K_ESCAPE:
+                    self._cancel()
+                    return
+                return
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                if self.back_button.clicked(event):
+                    self._cancel()
+                    return
+                for rect, map_name in self._vote_row_rects:
+                    if rect.collidepoint(event.pos):
+                        self.my_vote = map_name
+                        self.client.send({"type": protocol.C_VOTE, "map": map_name})
+                        return
+            return
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
                 self._cancel()
@@ -155,6 +187,8 @@ class JoinLobbyState(State):
                 self.client = None
             elif kind == protocol.S_LOBBY:
                 self.lobby_state = msg
+            elif kind == protocol.S_CHAT:
+                self.chat.add(msg.get("from_name", "?"), msg.get("text", ""))
             elif kind == protocol.S_START_GAME:
                 self.app.switch(
                     "client_play",
@@ -272,19 +306,19 @@ class JoinLobbyState(State):
         # Big green "IN LOBBY" badge so it's blindingly obvious that the
         # connect step succeeded and you're now waiting on the host.
         title = self.title_font.render("IN LOBBY", True, (90, 220, 90))
-        self.surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 80))
+        self.surface.blit(title, (SCREEN_WIDTH // 2 - title.get_width() // 2, 60))
 
         subtitle = self.body_font.render(
             f"You are Player {self.my_player_id + 1}.  Waiting for the host to start.",
             True, MENU_TEXT,
         )
-        self.surface.blit(subtitle, (SCREEN_WIDTH // 2 - subtitle.get_width() // 2, 180))
+        self.surface.blit(subtitle, (SCREEN_WIDTH // 2 - subtitle.get_width() // 2, 140))
 
-        # Roster panel
-        roster_top = 250
-        roster_x = SCREEN_WIDTH // 2 - 200
+        # Roster panel (left)
+        roster_top = 190
+        roster_x = SCREEN_WIDTH // 2 - 420
         roster_w = 400
-        roster_h = 240
+        roster_h = 230
         pygame.draw.rect(self.surface, (28, 28, 32),
                          (roster_x, roster_top, roster_w, roster_h),
                          border_radius=6)
@@ -292,7 +326,7 @@ class JoinLobbyState(State):
                          (roster_x, roster_top, roster_w, roster_h),
                          width=2, border_radius=6)
         ypos = roster_top + 12
-        roster_label = self.body_font.render("Players in lobby:", True, MENU_TEXT_DIM)
+        roster_label = self.body_font.render("Players:", True, MENU_TEXT_DIM)
         self.surface.blit(roster_label, (roster_x + 16, ypos))
         ypos += 36
 
@@ -304,30 +338,70 @@ class JoinLobbyState(State):
             self.surface.blit(host_line, (roster_x + 16, ypos))
             ypos += 32
             for p in self.lobby_state.get("players", []):
-                marker = "you" if p.get("id") == self.my_player_id else ""
-                color = (90, 220, 90) if marker else MENU_TEXT
+                me = p.get("id") == self.my_player_id
+                ready = p.get("ready", False)
+                tag = " READY" if ready else ""
+                marker = "  (you)" if me else ""
+                color = (90, 220, 90) if ready else ((255, 215, 0) if me else MENU_TEXT)
                 line = self.body_font.render(
-                    f"  • {p.get('name', 'Player')}  {marker}", True, color,
+                    f"  • {p.get('name', 'Player')}{marker}{tag}", True, color,
                 )
                 self.surface.blit(line, (roster_x + 16, ypos))
                 ypos += 32
-            map_line = self.small_font.render(
-                f"Map: {self.lobby_state.get('map_name', '?')}",
-                True, MENU_TEXT_DIM,
-            )
-            self.surface.blit(map_line, (roster_x + 16, roster_top + roster_h - 28))
         else:
             line = self.body_font.render(
                 "  ...waiting for lobby info...", True, MENU_TEXT_DIM,
             )
             self.surface.blit(line, (roster_x + 16, ypos))
 
-        # Hint
+        # Map-vote panel (right): click a map to vote for it.
+        vote_x = SCREEN_WIDTH // 2 + 20
+        vote_w = 400
+        pygame.draw.rect(self.surface, (28, 28, 32),
+                         (vote_x, roster_top, vote_w, roster_h), border_radius=6)
+        pygame.draw.rect(self.surface, (80, 80, 90),
+                         (vote_x, roster_top, vote_w, roster_h),
+                         width=2, border_radius=6)
+        vlabel = self.body_font.render("Vote for a map:", True, MENU_TEXT_DIM)
+        self.surface.blit(vlabel, (vote_x + 16, roster_top + 12))
+        self._vote_row_rects = []
+        if self.lobby_state is not None:
+            maps = self.lobby_state.get("maps") or []
+            votes = self.lobby_state.get("votes") or {}
+            chosen = self.lobby_state.get("map_name", "")
+            ry = roster_top + 48
+            mouse_pos = pygame.mouse.get_pos()
+            for m in maps[:5]:
+                rect = pygame.Rect(vote_x + 12, ry, vote_w - 24, 32)
+                self._vote_row_rects.append((rect, m))
+                hover = rect.collidepoint(mouse_pos)
+                mine = (m == self.my_vote)
+                bg = (55, 55, 65) if hover else (38, 38, 44)
+                pygame.draw.rect(self.surface, bg, rect, border_radius=4)
+                if mine:
+                    pygame.draw.rect(self.surface, (90, 220, 90), rect, width=2, border_radius=4)
+                n = votes.get(m, 0)
+                star = "* " if m == chosen else ""
+                label = self.small_font.render(
+                    f"{star}{m[:-4]}" + (f"   {n} vote{'s' if n != 1 else ''}" if n else ""),
+                    True, GOLD if m == chosen else MENU_TEXT)
+                self.surface.blit(label, (rect.x + 8, rect.y + 7))
+                ry += 38
+
+        # Ready button hint + chat
+        ready_txt = "READY  (press R to unready)" if self.ready else "press R when ready"
+        rt = self.body_font.render(ready_txt, True,
+                                   (90, 220, 90) if self.ready else MENU_TEXT_DIM)
+        self.surface.blit(rt, (SCREEN_WIDTH // 2 - rt.get_width() // 2, roster_top + roster_h + 16))
+
+        self.chat.draw(self.surface, x=20, bottom=SCREEN_HEIGHT - 110, fade=False)
+
         hint = self.small_font.render(
-            "Press ESC or click Back to leave the lobby.",
+            "Enter = chat    R = ready    ESC = leave lobby",
             True, MENU_TEXT_DIM,
         )
-        self.surface.blit(hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2, 540))
+        self.surface.blit(hint, (SCREEN_WIDTH // 2 - hint.get_width() // 2,
+                                 SCREEN_HEIGHT - 90))
 
     def _blit_wrapped(self, text: str, font, color, *,
                       center_x: int, top_y: int, max_width: int) -> None:

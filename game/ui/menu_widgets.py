@@ -33,6 +33,9 @@ class Button:
         text_rect = text_surf.get_rect(center=self.rect.center)
         surface.blit(text_surf, text_rect)
 
+    def set_label(self, label: str):
+        self.label = label
+
     def update_hover(self, mouse_pos):
         self.hovered = self.rect.collidepoint(mouse_pos)
 

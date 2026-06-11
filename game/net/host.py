@@ -10,6 +10,7 @@ from __future__ import annotations
 import socket
 import threading
 import time
+from queue import Queue
 from typing import Optional
 
 from game.net import protocol
@@ -19,7 +20,8 @@ from game.net.framing import FrameReader, encode, send_message
 class _ClientHandle:
     """One connected client from the host's point of view."""
 
-    def __init__(self, sock: socket.socket, addr, player_id: int):
+    def __init__(self, sock: socket.socket, addr, player_id: int,
+                 chat_inbox=None):
         self.sock = sock
         self.addr = addr
         self.player_id = player_id
@@ -28,6 +30,9 @@ class _ClientHandle:
         self.connected = True
         self.send_lock = threading.Lock()
         self._reader = FrameReader()
+        self._chat_inbox = chat_inbox   # Queue shared with HostServer
+        self.ready = False              # lobby ready-up flag
+        self.map_vote: str = ""         # lobby map vote (filename)
 
     def read_loop(self, on_disconnect):
         try:
@@ -62,6 +67,14 @@ class _ClientHandle:
                 "events": tuple(msg.get("events", ())),  # discrete keypresses (e.g. weapon switch)
                 "frame": int(msg.get("frame", 0)),
             }
+        elif kind == protocol.C_CHAT:
+            text = str(msg.get("text", ""))[:120].strip()
+            if text and self._chat_inbox is not None:
+                self._chat_inbox.put((self.player_id, self.name, text))
+        elif kind == protocol.C_READY:
+            self.ready = bool(msg.get("ready", False))
+        elif kind == protocol.C_VOTE:
+            self.map_vote = str(msg.get("map", ""))[:64]
         elif kind == protocol.C_GOODBYE:
             self.connected = False
 
@@ -93,6 +106,9 @@ class HostServer:
         self._accept_thread: Optional[threading.Thread] = None
         self.clients: list[_ClientHandle] = []
         self._clients_lock = threading.Lock()
+        # Chat messages from clients land here; the active state drains it
+        # each frame and rebroadcasts as S_CHAT.
+        self.chat_inbox: "Queue[tuple[int, str, str]]" = Queue()
         # Reuse the lowest unused pid >= 1 (host is always 0). Stops pids
         # drifting upward after disconnect/reconnect cycles, which would
         # cause player_id mismatches downstream.
@@ -138,7 +154,7 @@ class HostServer:
                         sock.close()
                     continue
                 pid = self._allocate_pid_locked()
-                handle = _ClientHandle(sock, addr, pid)
+                handle = _ClientHandle(sock, addr, pid, chat_inbox=self.chat_inbox)
                 self.clients.append(handle)
             handle.send({
                 "type": protocol.S_WELCOME,

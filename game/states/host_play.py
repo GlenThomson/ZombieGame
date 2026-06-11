@@ -84,18 +84,124 @@ class HostPlayState(PlayState):
             players_spec=players_spec,
         )
 
-    # ---- mid-game join ----
+        # In-game chat (Enter to type, host relays to everyone).
+        from game.ui.chat import ChatBox
+        self.chat = ChatBox()
+        self.host_name = host_name
+        # Reconnect bookkeeping: player_id -> ms when their client dropped.
+        self._orphaned_since: dict[int, int] = {}
+
+    # ---- chat ----
+
+    def _send_chat(self, line: str):
+        self.chat.add(self.host_name, line)
+        try:
+            self.server.broadcast({
+                "type": protocol.S_CHAT,
+                "from_name": self.host_name, "text": line,
+            })
+        except Exception:
+            pass
+
+    def _relay_client_chat(self):
+        while not self.server.chat_inbox.empty():
+            try:
+                _pid, name, text = self.server.chat_inbox.get_nowait()
+            except Exception:
+                break
+            self.chat.add(name, text)
+            try:
+                self.server.broadcast({
+                    "type": protocol.S_CHAT, "from_name": name, "text": text,
+                })
+            except Exception:
+                pass
+
+    # ---- mid-game join / reconnect ----
+
+    RECONNECT_GRACE_MS = 120_000   # how long a dropped player's body waits
+
+    def _track_orphans(self):
+        """Note when a player's client vanishes; kill the body once the
+        grace window runs out so the team isn't baby-sitting a statue."""
+        clients = self.server.connected_clients()
+        connected = {c.player_id for c in clients}
+        now = pygame.time.get_ticks()
+        for pid in list(self.client_id_to_input.keys()):
+            if pid in connected:
+                if pid in self._orphaned_since:
+                    # Reconnected with the SAME pid (common: lowest-unused
+                    # allocation hands their old id back). Reattach here —
+                    # _check_for_late_joiners would skip them because the
+                    # pid still looks like an active player.
+                    client = next((c for c in clients if c.player_id == pid), None)
+                    player = next((p for p in self.players if p.player_id == pid), None)
+                    if client is not None and player is not None:
+                        self._reattach(client, player)
+                    else:
+                        self._orphaned_since.pop(pid, None)
+                continue
+            if pid not in self._orphaned_since:
+                self._orphaned_since[pid] = now
+                player = next((p for p in self.players if p.player_id == pid), None)
+                if player is not None:
+                    self.chat.add("game", f"{player.name} disconnected")
+            elif now - self._orphaned_since[pid] > self.RECONNECT_GRACE_MS:
+                player = next((p for p in self.players if p.player_id == pid), None)
+                if player is not None and not player.is_dead():
+                    player.is_down = False
+                    player.health = 0
+                self._orphaned_since.pop(pid, None)
+                self.client_id_to_input.pop(pid, None)
+
+    def _find_orphan_player(self, name: str):
+        """A disconnected player this client can reclaim — matched by name
+        (names are user-chosen and persist on the rejoining machine)."""
+        for pid in self._orphaned_since:
+            player = next((p for p in self.players if p.player_id == pid), None)
+            if player is not None and player.name == name and not player.is_dead():
+                return player
+        return None
+
+    def _reattach(self, client, player):
+        """Give a reconnecting client their old body back: points, guns,
+        perks, position — everything survives the drop."""
+        old_pid = player.player_id
+        new_pid = client.player_id
+        self._orphaned_since.pop(old_pid, None)
+        self.client_id_to_input.pop(old_pid, None)
+        src = RemoteInputSource()
+        self.client_id_to_input[new_pid] = src
+        player.input_source = src
+        if old_pid != new_pid:
+            player.player_id = new_pid
+            self.perk_system_by_player[new_pid] = \
+                self.perk_system_by_player.pop(old_pid)
+        try:
+            client.send(self._start_game_payload)
+        except Exception:
+            pass
+        self.chat.add("game", f"{player.name} reconnected")
+        try:
+            self.server.broadcast({
+                "type": protocol.S_CHAT, "from_name": "game",
+                "text": f"{player.name} reconnected",
+            })
+        except Exception:
+            pass
 
     def _check_for_late_joiners(self):
         """Promote any newly-connected client into a real Player + InputSource
         and hand them S_START_GAME so their JoinLobbyState bounces straight
-        into ClientPlayState."""
-        # Cap the table at MAX_PLAYERS so we don't over-spawn.
-        if len(self.players) >= MAX_PLAYERS:
-            return
+        into ClientPlayState. Reconnecting players get their old body back."""
         for client in self.server.connected_clients():
             if client.player_id in self.client_id_to_input:
                 continue  # already a player
+            # Reconnect path: same name + body still waiting -> reclaim it.
+            orphan = self._find_orphan_player(client.name)
+            if orphan is not None:
+                self._reattach(client, orphan)
+                continue
             if len(self.players) >= MAX_PLAYERS:
                 # Tell the late joiner the game is full so they don't hang.
                 try:
@@ -152,6 +258,10 @@ class HostPlayState(PlayState):
         # accurate state.
         if self.announcer is not None:
             self.announcer.update(player_count=len(self.players), in_game=True)
+
+        # Chat + reconnect bookkeeping.
+        self._relay_client_chat()
+        self._track_orphans()
 
         # Promote any new TCP connections into players + ship them the map.
         self._check_for_late_joiners()

@@ -205,6 +205,9 @@ class PlayState(State):
             ("quit",   Button("Quit to Menu", (cx, SCREEN_HEIGHT - 130), btn_font, width=260)),
         ]
         self._leave_confirm_until = 0
+        # In-game chat (MP only — HostPlayState attaches a ChatBox; SP
+        # leaves this None and chat keys are ignored).
+        self.chat = None
 
     # ---- backwards-compat alias for code that pre-dates multi-player ----
 
@@ -515,6 +518,9 @@ class PlayState(State):
     def _is_multiplayer(self) -> bool:
         return len(self.players) > 1
 
+    def _send_chat(self, line: str):
+        """SP base: no transport. HostPlayState overrides to broadcast."""
+
     def _toggle_mute(self):
         from game import assets, config
         if assets.master_volume() > 0:
@@ -545,6 +551,13 @@ class PlayState(State):
             return
 
         if event.type == pygame.KEYDOWN:
+            # Chat first: while typing, EVERY key goes to the chat box.
+            if self.chat is not None and (self.chat.active
+                                          or event.key == pygame.K_RETURN):
+                line = self.chat.handle_key(event)
+                if line:
+                    self._send_chat(line)
+                return
             if event.key == pygame.K_ESCAPE:
                 if not self._is_multiplayer():
                     # SP: ESC opens the pause menu instead of rage-quitting.
@@ -649,6 +662,12 @@ class PlayState(State):
         self.zombies.update(self)
         for p in self.players:
             snap = p.input_source.snapshot()
+            # While the local player is typing in chat, feed them a blank
+            # input so WASD spells words instead of moving the character.
+            if (p is self.local_player and self.chat is not None
+                    and self.chat.active):
+                from game.systems.input import InputState
+                snap = InputState(mouse_pos=snap.mouse_pos)
             # Scene-level routing of interact (Player ignores "interact").
             for ev in snap.events:
                 if ev == "interact":
@@ -990,6 +1009,10 @@ class PlayState(State):
             bg.fill((0, 0, 0, 200))
             self.surface.blit(bg, bg.get_rect(center=(SCREEN_WIDTH // 2, 140)))
             self.surface.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, 140)))
+
+        # In-game chat (MP)
+        if self.chat is not None:
+            self.chat.draw(self.surface, x=14, bottom=SCREEN_HEIGHT - 130)
 
         # Hold Tab: scoreboard (works in SP too — shows your own stats).
         if pygame.key.get_pressed()[pygame.K_TAB]:

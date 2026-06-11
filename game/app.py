@@ -29,6 +29,7 @@ class App:
         pygame.display.set_caption(SCREEN_TITLE)
         self.clock = pygame.time.Clock()
         self.running = True
+        self.fps_limit = _config.fps_cap()
         self.fullscreen = False
         self._windowed_size = (SCREEN_WIDTH, SCREEN_HEIGHT)
         # Presentation transform (recomputed when the window resizes).
@@ -55,7 +56,9 @@ class App:
         from game.states.join_lobby import JoinLobbyState
         from game.states.host_play import HostPlayState
         from game.states.client_play import ClientPlayState
+        from game.states.settings_menu import SettingsState
         self._state_classes = {
+            "settings": SettingsState,
             "menu": MenuState,
             "map_select": MapSelectState,
             "play": PlayState,
@@ -135,4 +138,4 @@ class App:
             self.state.update()
             self.state.draw()
             self._present()
-            self.clock.tick(FPS_LIMIT)
+            self.clock.tick(self.fps_limit)

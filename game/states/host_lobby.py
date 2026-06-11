@@ -89,13 +89,30 @@ class HostLobbyState(State):
         self.next_map_btn = Button(">", (cx + 200, 480), self.btn_font, width=48, height=44)
         self.prev_map_btn = Button("<", (cx - 200, 480), self.btn_font, width=48, height=44)
 
+        from game.ui.chat import ChatBox
+        self.chat = ChatBox()
+
+    def _broadcast_chat(self, name: str, text: str):
+        from game.net import protocol
+        self.chat.add(name, text)
+        self.server.broadcast({
+            "type": protocol.S_CHAT, "from_name": name, "text": text,
+        })
+
     def handle_event(self, event):
         if event.type == pygame.MOUSEMOTION:
             for b in (self.start_button, self.back_button, self.next_map_btn, self.prev_map_btn):
                 b.update_hover(event.pos)
-        if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-            self._cancel()
-            return
+        if event.type == pygame.KEYDOWN:
+            # Chat capture first (Enter to type).
+            if self.chat.active or event.key == pygame.K_RETURN:
+                line = self.chat.handle_key(event)
+                if line:
+                    self._broadcast_chat(self.host_name, line)
+                return
+            if event.key == pygame.K_ESCAPE:
+                self._cancel()
+                return
         if event.type == pygame.MOUSEBUTTONDOWN:
             if self.back_button.clicked(event):
                 self._cancel()
@@ -179,15 +196,34 @@ class HostLobbyState(State):
         if self.announcer is not None:
             self.announcer.stop()
 
+    def _vote_counts(self) -> dict:
+        votes: dict[str, int] = {}
+        for c in self.server.connected_clients():
+            if c.map_vote and c.map_vote in self.maps:
+                votes[c.map_vote] = votes.get(c.map_vote, 0) + 1
+        return votes
+
     def update(self):
-        # Push lobby state to clients so they see who else has joined.
+        # Relay any chat from clients to everyone (and our own log).
+        while not self.server.chat_inbox.empty():
+            try:
+                _pid, name, text = self.server.chat_inbox.get_nowait()
+            except Exception:
+                break
+            self._broadcast_chat(name, text)
+
+        # Push lobby state to clients so they see who else has joined,
+        # who's ready, and how the map vote stands.
         from game.net import protocol
         clients = self.server.connected_clients()
         self.server.broadcast({
             "type": protocol.S_LOBBY,
-            "players": [{"id": c.player_id, "name": c.name} for c in clients],
+            "players": [{"id": c.player_id, "name": c.name,
+                         "ready": bool(c.ready)} for c in clients],
             "hosting_name": self.host_name,
             "map_name": self.maps[self.selected_map_idx] if self.selected_map_idx >= 0 else "",
+            "maps": list(self.maps),
+            "votes": self._vote_counts(),
         })
         # Keep the LAN announcement fresh — map selection and player
         # count change as people join / the host cycles maps.
@@ -219,23 +255,46 @@ class HostLobbyState(State):
         host_line = self.body_font.render(f"- {self.host_name} (you)", True, MENU_TEXT)
         self.surface.blit(host_line, (SCREEN_WIDTH // 2 - 120, ypos))
         ypos += 30
+        ready_count = 0
         for c in clients:
-            line = self.body_font.render(f"- {c.name}", True, MENU_TEXT)
+            ready = bool(c.ready)
+            ready_count += ready
+            tag = "  READY" if ready else ""
+            color = (90, 220, 90) if ready else MENU_TEXT
+            line = self.body_font.render(f"- {c.name}{tag}", True, color)
             self.surface.blit(line, (SCREEN_WIDTH // 2 - 120, ypos))
             ypos += 30
+        if clients:
+            rd = self.body_font.render(
+                f"{ready_count}/{len(clients)} ready", True,
+                (90, 220, 90) if ready_count == len(clients) else MENU_TEXT_DIM)
+            self.surface.blit(rd, (SCREEN_WIDTH // 2 - 120, ypos))
 
-        # Map picker
+        # Map picker (+ live vote tally from the lobby)
         map_label = self.body_font.render("Map:", True, MENU_TEXT_DIM)
         self.surface.blit(map_label, (SCREEN_WIDTH // 2 - 50, 440))
         map_name = self.maps[self.selected_map_idx] if self.maps else "(no maps)"
-        map_text = self.body_font.render(map_name, True, GOLD)
+        votes = self._vote_counts()
+        shown = map_name
+        if votes.get(map_name):
+            shown = f"{map_name}  ({votes[map_name]} votes)"
+        map_text = self.body_font.render(shown, True, GOLD)
         self.surface.blit(map_text, (SCREEN_WIDTH // 2 - map_text.get_width() // 2, 480))
+        if votes:
+            tally = ",  ".join(f"{m[:-4]}: {n}" for m, n in
+                               sorted(votes.items(), key=lambda kv: -kv[1]))
+            t = pygame.font.Font(None, 24).render(
+                f"votes: {tally}", True, MENU_TEXT_DIM)
+            self.surface.blit(t, (SCREEN_WIDTH // 2 - t.get_width() // 2, 515))
         if self.maps:
             self.next_map_btn.draw(self.surface)
             self.prev_map_btn.draw(self.surface)
 
         self.start_button.draw(self.surface)
         self.back_button.draw(self.surface)
+
+        # Lobby chat (left side, no fading)
+        self.chat.draw(self.surface, x=20, bottom=SCREEN_HEIGHT - 220, fade=False)
 
         # Network hint near the bottom — covers the two issues people hit
         # most: Windows Firewall blocking the .exe, and friends on a

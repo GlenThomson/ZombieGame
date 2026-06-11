@@ -11,6 +11,7 @@ _PATH = os.path.join(os.path.expanduser("~"), ".zombies_game.json")
 _DEFAULTS = {
     "player_name": "Player",
     "volume": 1.0,
+    "fps_cap": 60,
     "best_rounds": {},   # map filename -> highest round reached
 }
 
@@ -41,6 +42,13 @@ def save(**updates) -> None:
 def player_name() -> str:
     name = str(load().get("player_name", "Player")).strip()
     return name[:16] or "Player"
+
+
+def fps_cap() -> int:
+    try:
+        return max(30, min(240, int(load().get("fps_cap", 60))))
+    except (TypeError, ValueError):
+        return 60
 
 
 def volume() -> float:

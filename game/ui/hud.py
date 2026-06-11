@@ -237,12 +237,13 @@ class HUD:
         perk_system = getattr(player.scene, "perk_system", None)
         if perk_system is None:
             return
+        from game.ui.perk_icons import perk_icon
         x = SCREEN_WIDTH - 220
         y = 130
         for perk in perk_system.owned():
-            text = self.weapon_font.render(perk.name, True, perk.icon_color)
-            surface.blit(text, (x, y))
-            y += 24
+            icon = perk_icon(perk.name, perk.icon_color, height=36)
+            surface.blit(icon, (x, y))
+            x += icon.get_width() + 8
 
     def _draw_interaction_prompt(self, surface, scene):
         prompt = getattr(scene, "interaction_prompt", None)

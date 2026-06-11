@@ -26,11 +26,12 @@ class MenuState(State):
 
         cx = SCREEN_WIDTH // 2
         self.buttons = [
-            ("play",         Button("Play",         (cx, 360), button_font)),
-            ("multiplayer",  Button("Multiplayer",  (cx, 430), button_font)),
-            ("mapmaker",     Button("Map Maker",    (cx, 500), button_font)),
-            ("controls",     Button("Controls",     (cx, 570), button_font)),
-            ("quit",         Button("Quit",         (cx, 640), button_font)),
+            ("play",         Button("Play",         (cx, 330), button_font)),
+            ("multiplayer",  Button("Multiplayer",  (cx, 400), button_font)),
+            ("mapmaker",     Button("Map Maker",    (cx, 470), button_font)),
+            ("controls",     Button("Controls",     (cx, 540), button_font)),
+            ("settings",     Button("Settings",     (cx, 610), button_font)),
+            ("quit",         Button("Quit",         (cx, 680), button_font)),
         ]
         self.show_controls = False
         self._controls_font = pygame.font.Font(None, 30)
@@ -57,6 +58,8 @@ class MenuState(State):
             self.app.switch("map_maker_landing")
         elif action == "controls":
             self.show_controls = True
+        elif action == "settings":
+            self.app.switch("settings")
         elif action == "quit":
             self.app.quit()
 

@@ -78,6 +78,23 @@ class ClientPlayState(State):
         self.frame_id = 0
         self.connection_lost = False
 
+        # In-game chat
+        from game.ui.chat import ChatBox
+        self.chat = ChatBox()
+
+        # ---- client-side movement prediction ----
+        # Static blocking tiles (walls, machines). Doors + windows are
+        # dynamic — they come from the snapshot each frame, so opening a
+        # door or breaking a window immediately frees the path.
+        from game.world.tile import TileType
+        self._static_blocked: set[tuple[int, int]] = set()
+        for ty, row in enumerate(grid):
+            for tx, t in enumerate(row):
+                t = int(t)
+                if TileType.is_blocking(t) and t != int(TileType.DOOR_CLOSED):
+                    self._static_blocked.add((tx, ty))
+        self._pred_pos: pygame.math.Vector2 | None = None
+
         # Caches for rendering
         self._zombie_images: dict[str, pygame.Surface] = {}
         self._player_images: dict[int, pygame.Surface] = {}
@@ -90,6 +107,12 @@ class ClientPlayState(State):
 
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
+            # Chat first: while typing, EVERY key goes to the chat box.
+            if self.chat.active or event.key == pygame.K_RETURN:
+                line = self.chat.handle_key(event)
+                if line:
+                    self.net_client.send({"type": protocol.C_CHAT, "text": line})
+                return
             if event.key == pygame.K_ESCAPE:
                 # Double-tap ESC to leave — a single stray ESC shouldn't
                 # yank you out of a co-op game.
@@ -132,6 +155,8 @@ class ClientPlayState(State):
             kind = msg.get("type")
             if kind == protocol.S_SNAPSHOT:
                 self.latest_snapshot = msg
+            elif kind == protocol.S_CHAT:
+                self.chat.add(msg.get("from_name", "?"), msg.get("text", ""))
             elif kind == protocol.S_EVENT:
                 data = msg.get("data") or {}
                 sound_name = data.get("sound")
@@ -159,19 +184,105 @@ class ClientPlayState(State):
             self.app.switch("menu")
             return
 
-        # Send our local input each frame
+        # Send our local input each frame. While typing in chat, send a
+        # blank input (keep aim) so WASD types words instead of moving us.
         snap = self.input_source.snapshot()
+        if self.chat.active:
+            from game.systems.input import InputState
+            snap = InputState(mouse_pos=snap.mouse_pos)
         self.frame_id += 1
         wire = snap.to_wire(self.frame_id)
         wire["type"] = protocol.C_INPUT
         self.net_client.send(wire)
 
-        # Update camera to follow my player from latest snapshot
+        # Predict our own movement locally so it responds THIS frame
+        # instead of a round-trip later (the difference between LAN-feel
+        # and internet-feel).
+        self._predict_movement(snap)
+
+        # Camera follows the predicted position when available.
         me = self._my_player()
         if me is not None:
+            pos = self._pred_pos if self._pred_pos is not None else \
+                pygame.math.Vector2(me["pos"])
             class _T:
-                rect = pygame.Rect(int(me["pos"][0]), int(me["pos"][1]), 1, 1)
+                rect = pygame.Rect(int(pos.x), int(pos.y), 1, 1)
             self.camera.update(_T)
+
+    # ---- prediction helpers ----
+
+    def _dynamic_blocked(self) -> set[tuple[int, int]]:
+        blocked = set(self._static_blocked)
+        for it in self.latest_snapshot.get("interactables", []):
+            if it.get("type") in ("door", "window"):
+                wx, wy = it["pos"]
+                blocked.add((int(wx) // TILE_SIZE, int(wy) // TILE_SIZE))
+        return blocked
+
+    def _resolve_axis(self, pos, blocked, axis: str, vel: float, half: float):
+        if vel == 0:
+            return
+        x0 = int((pos.x - half) // TILE_SIZE)
+        x1 = int((pos.x + half - 1) // TILE_SIZE)
+        y0 = int((pos.y - half) // TILE_SIZE)
+        y1 = int((pos.y + half - 1) // TILE_SIZE)
+        for ty in range(y0, y1 + 1):
+            for tx in range(x0, x1 + 1):
+                if (tx, ty) not in blocked:
+                    continue
+                if axis == "x":
+                    pos.x = tx * TILE_SIZE - half if vel > 0 \
+                        else (tx + 1) * TILE_SIZE + half
+                else:
+                    pos.y = ty * TILE_SIZE - half if vel > 0 \
+                        else (ty + 1) * TILE_SIZE + half
+                return
+
+    def _predict_movement(self, snap):
+        from settings import PLAYER_HIT_BOX_SIZE, SPRINT_MULT
+        me = self._my_player()
+        if me is None:
+            return
+        if me.get("is_down") or me.get("is_dead"):
+            self._pred_pos = None   # authoritative only while down/dead
+            return
+        auth = pygame.math.Vector2(me["pos"])
+        if self._pred_pos is None:
+            self._pred_pos = auth.copy()
+            return
+
+        # Same movement math as Player._movement on the host.
+        speed = float(me.get("speed", 5.0))
+        if snap.is_down(pygame.K_LSHIFT) or snap.is_down(pygame.K_RSHIFT):
+            speed *= SPRINT_MULT
+        left = snap.is_down(pygame.K_a) or snap.is_down(pygame.K_LEFT)
+        right = snap.is_down(pygame.K_d) or snap.is_down(pygame.K_RIGHT)
+        up = snap.is_down(pygame.K_w) or snap.is_down(pygame.K_UP)
+        down = snap.is_down(pygame.K_s) or snap.is_down(pygame.K_DOWN)
+        vx = (-speed if left else 0) + (speed if right else 0)
+        vy = (-speed if up else 0) + (speed if down else 0)
+        if vx != 0 and vy != 0:
+            inv = speed / (vx * vx + vy * vy) ** 0.5
+            vx *= inv
+            vy *= inv
+
+        half = PLAYER_HIT_BOX_SIZE / 2
+        blocked = self._dynamic_blocked()
+        p = self._pred_pos
+        p.x += vx
+        self._resolve_axis(p, blocked, "x", vx, half)
+        p.y += vy
+        self._resolve_axis(p, blocked, "y", vy, half)
+
+        # Reconcile with the host. A deadband absorbs ordinary RTT lag (so
+        # constant motion isn't rubber-banded); big divergence (collision
+        # disagreement, teleports) snaps or pulls hard.
+        err = auth - p
+        d = err.length()
+        if d > 150:
+            self._pred_pos = auth.copy()
+        elif d > 40:
+            self._pred_pos = p + err.normalize() * (d - 40) * 0.25
 
     def _my_player(self) -> dict | None:
         for p in self.latest_snapshot.get("players", []):
@@ -322,6 +433,9 @@ class ClientPlayState(State):
             for e in snap.get("active_effects", [])
         ], local_player_id=self.my_player_id)
 
+        # In-game chat
+        self.chat.draw(self.surface, x=14, bottom=SCREEN_HEIGHT - 130)
+
         # Hit markers at the cursor (data ships in my player snapshot row).
         me = self._my_player()
         if me is not None:
@@ -392,6 +506,12 @@ class ClientPlayState(State):
 
     def _draw_player(self, p: dict, cam_x, cam_y):
         pid = p["id"]
+        # My own body renders at the PREDICTED position so movement is
+        # instant; everyone else renders at the authoritative snapshot pos.
+        if (pid == self.my_player_id and self._pred_pos is not None
+                and not p.get("is_down") and not p.get("is_dead")):
+            p = dict(p)
+            p["pos"] = (self._pred_pos.x, self._pred_pos.y)
         base = self._player_images.get(pid)
         if base is None:
             base = assets.image("player.png", scale=(TILE_SIZE, TILE_SIZE))
@@ -679,12 +799,13 @@ class ClientPlayState(State):
                 f"Monkey: {me['monkey_bombs']}", True, (220, 100, 160))
             self.surface.blit(mk, (SCREEN_WIDTH - 100, 100))
 
-        # Perks
-        ypos = 130
+        # Perks (vial icons, same as the host HUD)
+        from game.ui.perk_icons import perk_icon
+        px = SCREEN_WIDTH - 220
         for name, color in me.get("perks", []):
-            r = self.weapon_font.render(name, True, tuple(color))
-            self.surface.blit(r, (SCREEN_WIDTH - 220, ypos))
-            ypos += 24
+            icon = perk_icon(str(name), tuple(color), height=36)
+            self.surface.blit(icon, (px, 130))
+            px += icon.get_width() + 8
 
         # Interaction prompt
         prompts = snap.get("interaction_prompts", {}) or {}

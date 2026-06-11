@@ -132,6 +132,7 @@ def _player_dict(player, scene) -> dict:
         "name": player.name,
         "pos": (float(player.pos.x), float(player.pos.y)),
         "angle": float(player.angle),
+        "speed": float(player.speed),   # modifier-aware, for client prediction
         "health": float(player.health),
         "max_health": float(player.max_health),
         "points": int(player.points),
