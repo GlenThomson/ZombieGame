@@ -8,7 +8,8 @@ from game.ui.menu_widgets import Button, draw_menu_background
 
 class GameOverState(State):
     def on_enter(self, *, final_round: int = 1, final_kills: int = 0,
-                 player_stats: list | None = None, **kwargs):
+                 player_stats: list | None = None, map_name: str = "",
+                 new_best: bool = False, **kwargs):
         title_font = pygame.font.Font(None, 110)
         sub_font = pygame.font.Font(None, 36)
         body_font = pygame.font.Font(None, 28)
@@ -21,6 +22,15 @@ class GameOverState(State):
             sub_font.render(f"Survived to round {final_round}", True, MENU_TEXT),
             sub_font.render(f"Total team kills: {final_kills}", True, MENU_TEXT_DIM),
         ]
+        if new_best:
+            self.sub_surfs.insert(
+                0, sub_font.render("NEW BEST ROUND!", True, GOLD))
+        elif map_name:
+            from game import config
+            best = config.best_round(map_name)
+            if best > 0:
+                self.sub_surfs.append(sub_font.render(
+                    f"Best on this map: round {best}", True, MENU_TEXT_DIM))
 
         # Scoreboard rows
         self.body_font = body_font

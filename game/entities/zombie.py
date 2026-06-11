@@ -65,6 +65,19 @@ class Zombie(pygame.sprite.Sprite):
         # wedging in corners or against decor).
         self._stuck_check_at_ms = pygame.time.get_ticks()
         self._stuck_check_pos = vector(self.pos)
+        # Rise-from-the-ground spawn animation + per-zombie swipe cooldown.
+        self.spawned_at_ms = pygame.time.get_ticks()
+        self.last_attack_ms = 0
+
+    @property
+    def is_rising(self) -> bool:
+        from settings import ZOMBIE_RISE_MS
+        return pygame.time.get_ticks() - self.spawned_at_ms < ZOMBIE_RISE_MS
+
+    def rise_progress(self) -> float:
+        from settings import ZOMBIE_RISE_MS
+        t = (pygame.time.get_ticks() - self.spawned_at_ms) / ZOMBIE_RISE_MS
+        return max(0.0, min(1.0, t))
 
     def _compute_path(self):
         # Prefer monkey bomb if active; else go to nearest player.
@@ -81,6 +94,14 @@ class Zombie(pygame.sprite.Sprite):
         if self.health <= 0:
             self.kill()
             return
+
+        # Rising out of the ground: fade in, no movement or AI yet.
+        if self.is_rising:
+            t = self.rise_progress()
+            self.image.set_alpha(int(40 + 215 * t))
+            return
+        if self.image.get_alpha() not in (None, 255):
+            self.image.set_alpha(255)
 
         # Stuck detection — if we haven't moved meaningfully in STUCK_CHECK_MS,
         # drop the path so the next path-retry kicks in immediately.

@@ -27,6 +27,7 @@ def build_snapshot(scene) -> dict:
                 "type": type(z).__name__,
                 "pos": (float(z.pos.x), float(z.pos.y)),
                 "angle": float(z.angle),
+                "rise": float(z.rise_progress() if hasattr(z, "rise_progress") else 1.0),
             }
             for z in scene.zombies
         ],
@@ -151,6 +152,9 @@ def _player_dict(player, scene) -> dict:
         "kills": int(player.kills),
         "headshots": int(player.headshot_kills),
         "downs": int(player.downs),
+        # Hit-marker feedback (ms since my bullet hit / killed)
+        "hit_ago": min(9999, pygame.time.get_ticks() - player.last_hit_ms),
+        "kill_ago": min(9999, pygame.time.get_ticks() - player.last_kill_ms),
     }
 
 

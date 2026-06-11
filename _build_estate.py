@@ -284,6 +284,7 @@ def main():
     b.perk(57, 18, "Speed Cola")           # garage
     b.perk(55, 36, "Double Tap")           # shed
     b.perk(36, 30, "Stamin-Up")            # yard, outside shed NW corner
+    b.perk(39, 16, "Mule Kick")            # garage, south of the west door
     # Wall buys
     b.wall_buy(16, 7, "Shotgun")           # living room north wall
     b.wall_buy(7, 18, "SMG")               # dining west wall

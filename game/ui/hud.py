@@ -196,8 +196,9 @@ class HUD:
         sub_rect = sub_surf.get_rect(bottomright=(SCREEN_WIDTH - 30, SCREEN_HEIGHT - 12))
         surface.blit(sub_surf, sub_rect)
 
-        # Weapon name along the top-right.
-        rendered = self.weapon_font.render(weapon.name, True, MENU_TEXT)
+        # Weapon name along the top-right — GOLD once Pack-a-Punched.
+        name_color = GOLD if getattr(weapon, "is_packed", False) else MENU_TEXT
+        rendered = self.weapon_font.render(weapon.name, True, name_color)
         surface.blit(rendered, (SCREEN_WIDTH - 220, 40))
 
         # Reload progress bar — visible only when reloading.
@@ -215,7 +216,9 @@ class HUD:
             pygame.draw.rect(surface, MENU_TEXT, (bx, by, bw, bh), 1)
 
         slot_x = SCREEN_WIDTH - 220
-        for i, slot in enumerate(player.inventory.slots):
+        max_slots = getattr(player.inventory, "max_slots", 2)
+        for i in range(max_slots):
+            slot = player.inventory.slots[i]
             label = "-" if slot is None else slot.name[:1]
             color = GOLD if i == player.inventory.equipped_index else MENU_TEXT_DIM
             rendered = self.weapon_font.render(f"{i+1}:{label}", True, color)

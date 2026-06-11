@@ -27,11 +27,27 @@ def image(name: str, scale: tuple[int, int] | None = None) -> pygame.Surface:
     return surf
 
 
+_master_volume = 1.0
+
+
 def sound(name: str) -> pygame.mixer.Sound:
     cached = _sound_cache.get(name)
     if cached is not None:
         return cached
     path = os.path.join(_SOUND_DIR, name)
     snd = pygame.mixer.Sound(path)
+    snd.set_volume(_master_volume)
     _sound_cache[name] = snd
     return snd
+
+
+def set_master_volume(volume: float) -> None:
+    """0.0 (mute) .. 1.0. Applies to every cached and future sound."""
+    global _master_volume
+    _master_volume = max(0.0, min(1.0, volume))
+    for snd in _sound_cache.values():
+        snd.set_volume(_master_volume)
+
+
+def master_volume() -> float:
+    return _master_volume

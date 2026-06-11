@@ -132,12 +132,17 @@ def main():
     expected = sorted(p.player_id for p in host_play.players)
     assert snap_pids == expected, f"snapshot pids {snap_pids} != {expected}"
 
-    # Force a zombie next to client A's player and verify damage flows
+    # Force a zombie next to client A's player and verify damage flows.
+    # Zombies now rise from the ground for ~0.6s and swipe on a cooldown,
+    # so poll wall-clock time instead of a fixed frame count.
     pa = host_play.players[1]
     Zombie(host_play, pa.pos.x + 5, pa.pos.y)
     starting_hp = pa.health
-    for _ in range(40):
+    deadline = time.time() + 5.0
+    while time.time() < deadline:
         host_play.update()
+        if pa.health < starting_hp or pa.is_down:
+            break
     print(f"  client A HP: {starting_hp} -> {pa.health}")
     # Either took damage OR went down
     assert pa.health < starting_hp or pa.is_down, "client A wasn't damaged by zombie"

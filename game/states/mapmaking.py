@@ -53,7 +53,8 @@ DECOR_PALETTE: list[str] = list(DECOR_SPRITES.keys())
 LAYER_CYCLE = ["object", "floor", "decor"]
 
 # Cycled with P (perk machine tool active) and B (wall buy tool active).
-PERK_CYCLE = ["Quick Revive", "Juggernog", "Speed Cola", "Double Tap", "Stamin-Up"]
+PERK_CYCLE = ["Quick Revive", "Juggernog", "Speed Cola", "Double Tap",
+              "Stamin-Up", "Mule Kick"]
 WALL_BUY_CYCLE = ["Shotgun", "AK74u", "Galil", "SMG", "LMG", "Sniper"]
 PERK_MACHINE_TILE = 9
 WALL_BUY_TILE = 8

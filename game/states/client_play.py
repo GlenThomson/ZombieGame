@@ -91,8 +91,23 @@ class ClientPlayState(State):
     def handle_event(self, event):
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                self.net_client.close()
-                self.app.switch("menu")
+                # Double-tap ESC to leave — a single stray ESC shouldn't
+                # yank you out of a co-op game.
+                now = pygame.time.get_ticks()
+                if now < getattr(self, "_leave_confirm_until", 0):
+                    self.net_client.close()
+                    self.app.switch("menu")
+                else:
+                    self._leave_confirm_until = now + 2500
+                return
+            if event.key == pygame.K_m:
+                from game import assets, config
+                if assets.master_volume() > 0:
+                    assets.set_master_volume(0.0)
+                    config.save(volume=0.0)
+                else:
+                    assets.set_master_volume(1.0)
+                    config.save(volume=1.0)
                 return
             mapping = {
                 pygame.K_g: "grenade",
@@ -107,6 +122,9 @@ class ClientPlayState(State):
             ev_name = mapping.get(event.key)
             if ev_name is not None:
                 self.input_source.push_event(ev_name)
+            return
+        if event.type == pygame.MOUSEWHEEL and event.y != 0:
+            self.input_source.push_event(f"cycle:{1 if event.y > 0 else -1}")
 
     def update(self):
         # Drain incoming server messages
@@ -127,6 +145,8 @@ class ClientPlayState(State):
                     "game_over",
                     final_round=msg.get("final_round", 1),
                     final_kills=msg.get("final_kills", 0),
+                    player_stats=msg.get("player_stats") or [],
+                    map_name=msg.get("map_name", ""),
                 )
                 return
             elif kind in (protocol.S_GOODBYE, protocol.S_REJECT):
@@ -179,6 +199,20 @@ class ClientPlayState(State):
             img.set_alpha(max(0, b.get("alpha", 200)))
             wx, wy = b["pos"]
             self.surface.blit(img, img.get_rect(center=(wx + cam_x, wy + cam_y)))
+
+        # Mystery-box halo first so machines render on top of it.
+        import math as _math
+        glow_t = pygame.time.get_ticks() / 300.0
+        for it in snap.get("interactables", []):
+            if it.get("type") != "mystery_box":
+                continue
+            wx, wy = it["pos"]
+            r = int(34 + 6 * _math.sin(glow_t))
+            halo = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(halo, (255, 215, 0, 70), (r, r), r)
+            pygame.draw.circle(halo, (255, 215, 0, 110), (r, r), int(r * 0.6))
+            self.surface.blit(halo, halo.get_rect(
+                center=(wx + cam_x + TILE_SIZE // 2, wy + cam_y + TILE_SIZE // 2)))
 
         # Interactables
         for it in snap.get("interactables", []):
@@ -284,6 +318,23 @@ class ClientPlayState(State):
             for e in snap.get("active_effects", [])
         ], local_player_id=self.my_player_id)
 
+        # Hit markers at the cursor (data ships in my player snapshot row).
+        me = self._my_player()
+        if me is not None:
+            if me.get("kill_ago", 9999) < 250:
+                self._draw_hit_marker((255, 60, 60), 9)
+            elif me.get("hit_ago", 9999) < 150:
+                self._draw_hit_marker((240, 240, 240), 7)
+
+        # Leave-confirm banner (double-tap ESC).
+        if pygame.time.get_ticks() < getattr(self, "_leave_confirm_until", 0):
+            font = pygame.font.Font(None, 36)
+            text = font.render("Press ESC again to leave the game", True, (255, 90, 90))
+            bg = pygame.Surface((text.get_width() + 24, text.get_height() + 12), pygame.SRCALPHA)
+            bg.fill((0, 0, 0, 200))
+            self.surface.blit(bg, bg.get_rect(center=(SCREEN_WIDTH // 2, 140)))
+            self.surface.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, 140)))
+
         # Hold Tab: scoreboard from the latest snapshot.
         if pygame.key.get_pressed()[pygame.K_TAB]:
             from game.ui.hud import draw_scoreboard
@@ -304,6 +355,13 @@ class ClientPlayState(State):
             self.surface.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
 
 
+    def _draw_hit_marker(self, color, size: int):
+        mx, my = pygame.mouse.get_pos()
+        for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+            pygame.draw.line(self.surface, color,
+                             (mx + dx * 4, my + dy * 4),
+                             (mx + dx * size, my + dy * size), 3)
+
     def _draw_zombie(self, z: dict, cam_x, cam_y):
         kind = z.get("type", "Zombie")
         img = self._zombie_images.get(kind)
@@ -321,6 +379,10 @@ class ClientPlayState(State):
                 img = assets.image("zombie.png", scale=(TILE_SIZE, TILE_SIZE))
             self._zombie_images[kind] = img
         rotated = pygame.transform.rotate(img, -z.get("angle", 0))
+        rise = float(z.get("rise", 1.0))
+        if rise < 1.0:
+            rotated = rotated.copy()
+            rotated.set_alpha(int(40 + 215 * rise))
         rect = rotated.get_rect(center=(z["pos"][0] + cam_x, z["pos"][1] + cam_y))
         self.surface.blit(rotated, rect)
 

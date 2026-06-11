@@ -9,9 +9,7 @@ CoD-faithful set:
 - Speed Cola:  reload_time x 0.5   (3000 pts)
 - Double Tap:  fire_rate x 1.33, damage x 2  (2000 pts)
 - Stamin-Up:   speed x 1.4         (2000 pts)
-- Mule Kick:   inventory size +1   (4000 pts)  -- inventory cap is hardcoded
-                today, so this perk is wired up but only takes effect once
-                Inventory.MAX_SLOTS becomes per-player.
+- Mule Kick:   third weapon slot   (4000 pts)
 """
 from dataclasses import dataclass
 
@@ -92,6 +90,9 @@ class PerkSystem:
             # 3 self-revive charges. In MP, also speeds up reviving teammates
             # (handled in PlayState._handle_revives).
             self.player.quick_revive_charges = 3
+        elif perk.name == "Mule Kick":
+            # Third weapon slot.
+            self.player.inventory.max_slots = 3
 
     def clear_all(self):
         for perk in self._owned:

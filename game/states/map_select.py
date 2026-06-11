@@ -1,7 +1,9 @@
-"""Map selection screen — lists every .pkl in maps/ as a button."""
+"""Map selection screen — lists every .pkl in maps/ as a button, with your
+best round (persisted in the user config) next to each map."""
 import pygame
 
 from settings import SCREEN_WIDTH, SCREEN_HEIGHT, MENU_TEXT
+from game import config
 from game.states.base import State
 from game.ui.menu_widgets import Button, draw_menu_background
 from game.world import map_loader
@@ -12,12 +14,14 @@ class MapSelectState(State):
         self.title_font = pygame.font.Font(None, 80)
         self.button_font = pygame.font.Font(None, 38)
         self.empty_font = pygame.font.Font(None, 40)
+        self.best_font = pygame.font.Font(None, 26)
 
         self.title_surf = self.title_font.render("Select a Map", True, MENU_TEXT)
         self.title_pos = (SCREEN_WIDTH // 2 - self.title_surf.get_width() // 2, 80)
 
         files = map_loader.list_maps()
         self.buttons = []
+        self.best_labels: list[tuple[pygame.Surface, tuple[int, int]]] = []
         if files:
             spacing = 70
             start_y = 220
@@ -26,6 +30,12 @@ class MapSelectState(State):
                 label = fname[:-4]
                 btn = Button(label, (cx, start_y + i * spacing), self.button_font, width=320, height=54)
                 self.buttons.append((fname, btn))
+                best = config.best_round(fname)
+                if best > 0:
+                    surf = self.best_font.render(
+                        f"best: round {best}", True, (255, 215, 0))
+                    self.best_labels.append(
+                        (surf, (cx + 180, start_y + i * spacing - surf.get_height() // 2)))
 
         self.back_button = Button("Back", (90, SCREEN_HEIGHT - 60), self.button_font, width=140, height=46)
 
@@ -54,6 +64,7 @@ class MapSelectState(State):
                         floor_grid=data.get("floor_grid"),
                         wall_style=data.get("wall_style", "brick"),
                         decor=data.get("decor", []),
+                        map_name=fname,
                     )
                     return
 
@@ -65,4 +76,6 @@ class MapSelectState(State):
             self.surface.blit(text, (SCREEN_WIDTH // 2 - text.get_width() // 2, SCREEN_HEIGHT // 2))
         for _, btn in self.buttons:
             btn.draw(self.surface)
+        for surf, pos in self.best_labels:
+            self.surface.blit(surf, pos)
         self.back_button.draw(self.surface)

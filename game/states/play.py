@@ -55,6 +55,7 @@ class PlayState(State):
                  floor_grid: list | None = None,
                  wall_style: str = "brick",
                  decor: list | None = None,
+                 map_name: str = "",
                  player_count: int = 1,
                  local_player_id: int = 0,
                  remote_input_sources: dict | None = None,
@@ -193,6 +194,17 @@ class PlayState(State):
 
         self.hud = HUD()
         self.round_text_font = pygame.font.Font(None, 180)
+        self.map_name = map_name
+
+        # Pause-menu buttons (SP only, but cheap to build always).
+        from game.ui.menu_widgets import Button
+        btn_font = pygame.font.Font(None, 44)
+        cx = SCREEN_WIDTH // 2
+        self._pause_buttons = [
+            ("resume", Button("Resume", (cx, SCREEN_HEIGHT - 200), btn_font, width=260)),
+            ("quit",   Button("Quit to Menu", (cx, SCREEN_HEIGHT - 130), btn_font, width=260)),
+        ]
+        self._leave_confirm_until = 0
 
     # ---- backwards-compat alias for code that pre-dates multi-player ----
 
@@ -500,14 +512,56 @@ class PlayState(State):
 
     # ---- per-frame ----
 
+    def _is_multiplayer(self) -> bool:
+        return len(self.players) > 1
+
+    def _toggle_mute(self):
+        from game import assets, config
+        if assets.master_volume() > 0:
+            assets.set_master_volume(0.0)
+            config.save(volume=0.0)
+        else:
+            assets.set_master_volume(1.0)
+            config.save(volume=1.0)
+
     def handle_event(self, event):
+        # ---- paused (SP): pause menu owns input ----
+        if self.paused:
+            if event.type == pygame.KEYDOWN and event.key in (
+                    pygame.K_ESCAPE, pygame.K_p):
+                self.paused = False
+                return
+            if event.type == pygame.MOUSEMOTION:
+                for _, b in self._pause_buttons:
+                    b.update_hover(event.pos)
+            if event.type == pygame.MOUSEBUTTONDOWN:
+                for action, b in self._pause_buttons:
+                    if b.clicked(event):
+                        if action == "resume":
+                            self.paused = False
+                        elif action == "quit":
+                            self.app.switch("menu")
+                        return
+            return
+
         if event.type == pygame.KEYDOWN:
             if event.key == pygame.K_ESCAPE:
-                self.app.switch("menu")
+                if not self._is_multiplayer():
+                    # SP: ESC opens the pause menu instead of rage-quitting.
+                    self.paused = True
+                    return
+                # MP: the world can't stop — double-tap ESC to leave.
+                now = pygame.time.get_ticks()
+                if now < getattr(self, "_leave_confirm_until", 0):
+                    self.app.switch("menu")
+                else:
+                    self._leave_confirm_until = now + 2500
                 return
-            if event.key == pygame.K_p and len(self.players) == 1:
-                # Single-player only — pause is meaningless in MP.
+            if event.key == pygame.K_p and not self._is_multiplayer():
                 self.paused = not self.paused
+                return
+            if event.key == pygame.K_m:
+                self._toggle_mute()
                 return
             mapping = {
                 pygame.K_g: "grenade",
@@ -525,6 +579,13 @@ class PlayState(State):
             src = self.local_player.input_source
             if hasattr(src, "push_event"):
                 src.push_event(ev_name)
+            return
+
+        # Mouse wheel: cycle weapons.
+        if event.type == pygame.MOUSEWHEEL and event.y != 0:
+            src = self.local_player.input_source
+            if hasattr(src, "push_event"):
+                src.push_event(f"cycle:{1 if event.y > 0 else -1}")
 
     def _fire_interaction_for(self, player: Player):
         focused = self._find_focused_for(player)
@@ -544,10 +605,15 @@ class PlayState(State):
             return
         # End-of-game: all players dead.
         if not self.alive_players():
+            from game import config
+            new_best = config.record_best_round(
+                self.map_name, self.round_manager.current_round)
             self.app.switch(
                 "game_over",
                 final_round=self.round_manager.current_round,
                 final_kills=self.kill_count,
+                map_name=self.map_name,
+                new_best=new_best,
                 player_stats=[
                     {
                         "name": p.name,
@@ -657,6 +723,8 @@ class PlayState(State):
 
     def _sprite_interactions(self):
         from game.entities.effects import FloatingText, LightningArc
+        from settings import ZOMBIE_ATTACK_DAMAGE, ZOMBIE_ATTACK_COOLDOWN_MS
+        now_ms = pygame.time.get_ticks()
         mult = self.points_multiplier
         for zombie in self.zombies:
             for bullet in self.bullets:
@@ -670,8 +738,11 @@ class PlayState(State):
                 was_alive = zombie.health > 0
                 zombie.take_damage(damage)
                 shooter = self._player_by_id(bullet.shooter_id)
+                if shooter is not None:
+                    shooter.last_hit_ms = now_ms  # hit-marker feedback
                 if was_alive and shooter is not None:
                     if zombie.health <= 0:
+                        shooter.last_kill_ms = now_ms
                         pts = int(POINTS_PER_KILL * mult)
                         shooter.points += pts
                         shooter.kills += 1
@@ -691,22 +762,27 @@ class PlayState(State):
                 if bullet.hit_count >= bullet.penetration:
                     bullet.kill()
 
-            # Each player can take damage from any zombie touching them.
+            # Melee: BO1 swipes — a real chunk of damage with a recovery
+            # window per zombie, instead of contact damage every frame.
+            if zombie.is_rising:
+                continue  # can't bite while still climbing out of the dirt
             for player in self.players:
                 if player.is_down or player.is_dead():
                     continue
                 if zombie.hit_box.colliderect(player.hit_box):
                     zombie.speed = zombie.speed_base * 0.1
-                    player.take_damage()
-                    if player is self.local_player:
-                        self.damage_flash_alpha = min(180, self.damage_flash_alpha + 60)
-                    if player.health <= 0 and not player.is_down:
-                        any_standing_others = any(
-                            p is not player and not p.is_down and not p.is_dead()
-                            for p in self.players
-                        )
-                        if any_standing_others:
-                            player.go_down()
+                    if now_ms - zombie.last_attack_ms >= ZOMBIE_ATTACK_COOLDOWN_MS:
+                        zombie.last_attack_ms = now_ms
+                        player.take_damage(ZOMBIE_ATTACK_DAMAGE)
+                        if player is self.local_player:
+                            self.damage_flash_alpha = min(180, self.damage_flash_alpha + 90)
+                        if player.health <= 0 and not player.is_down:
+                            any_standing_others = any(
+                                p is not player and not p.is_down and not p.is_dead()
+                                for p in self.players
+                            )
+                            if any_standing_others:
+                                player.go_down()
                 else:
                     zombie.speed = zombie.speed_base
         # decay lightning arcs
@@ -801,7 +877,9 @@ class PlayState(State):
     # ---- draw ----
 
     def draw(self):
-        pygame.display.set_caption(f"{self.app.clock.get_fps():.2f}")
+        pygame.display.set_caption(
+            f"Zombies  |  round {self.round_manager.current_round}  |  "
+            f"{self.app.clock.get_fps():.0f} fps")
         self.surface.fill(WHITE)
         # Draw the floor tile grid (every cell). Background image is now a
         # legacy fallback only used if floor_grid was empty for some reason.
@@ -831,6 +909,19 @@ class PlayState(State):
         decor_visible.sort(key=lambda s: s.rect.bottom)
         for sprite in decor_visible:
             self.surface.blit(sprite.image, (sprite.rect.x + cam.x, sprite.rect.y + cam.y))
+
+        # Pulsing gold halo under the mystery box so it's findable after a
+        # teddy relocation (BO1's sky beam, top-down style).
+        glow_t = pygame.time.get_ticks() / 300.0
+        for mb in self.mystery_boxes:
+            if not mb.rect.colliderect(viewport):
+                continue
+            r = int(34 + 6 * math.sin(glow_t))
+            halo = pygame.Surface((r * 2, r * 2), pygame.SRCALPHA)
+            pygame.draw.circle(halo, (255, 215, 0, 70), (r, r), r)
+            pygame.draw.circle(halo, (255, 215, 0, 110), (r, r), int(r * 0.6))
+            self.surface.blit(halo, halo.get_rect(
+                center=(mb.rect.centerx + cam.x, mb.rect.centery + cam.y)))
 
         visible_interactables = (
             self.doors, self.wall_buys, self.windows,
@@ -883,6 +974,23 @@ class PlayState(State):
 
         self.hud.draw(self.surface, self)
 
+        # Hit markers at the cursor: white X on hit, red X on kill.
+        now_ms = pygame.time.get_ticks()
+        me = self.local_player
+        if now_ms - me.last_kill_ms < 250:
+            self._draw_hit_marker((255, 60, 60), 9)
+        elif now_ms - me.last_hit_ms < 150:
+            self._draw_hit_marker((240, 240, 240), 7)
+
+        # MP leave-confirm banner (double-tap ESC).
+        if now_ms < getattr(self, "_leave_confirm_until", 0):
+            font = pygame.font.Font(None, 36)
+            text = font.render("Press ESC again to leave the game", True, (255, 90, 90))
+            bg = pygame.Surface((text.get_width() + 24, text.get_height() + 12), pygame.SRCALPHA)
+            bg.fill((0, 0, 0, 200))
+            self.surface.blit(bg, bg.get_rect(center=(SCREEN_WIDTH // 2, 140)))
+            self.surface.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, 140)))
+
         # Hold Tab: scoreboard (works in SP too — shows your own stats).
         if pygame.key.get_pressed()[pygame.K_TAB]:
             from game.ui.hud import draw_scoreboard
@@ -922,6 +1030,13 @@ class PlayState(State):
                 img = assets.image(os.path.join("tiles", png))
                 self.surface.blit(img, (x * TILE_SIZE + cam_x, y * TILE_SIZE + cam_y))
 
+    def _draw_hit_marker(self, color, size: int):
+        mx, my = pygame.mouse.get_pos()
+        for dx, dy in ((-1, -1), (1, -1), (-1, 1), (1, 1)):
+            pygame.draw.line(self.surface, color,
+                             (mx + dx * 4, my + dy * 4),
+                             (mx + dx * size, my + dy * size), 3)
+
     def _draw_pause_overlay(self):
         from game.ui.controls import CONTROLS
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
@@ -931,21 +1046,19 @@ class PlayState(State):
         font_sm = pygame.font.Font(None, 28)
         title = font_big.render("PAUSED", True, (220, 220, 220))
         self.surface.blit(
-            title, title.get_rect(center=(SCREEN_WIDTH // 2, 110)),
-        )
-        sub = font_sm.render("Press P to resume", True, (180, 180, 180))
-        self.surface.blit(
-            sub, sub.get_rect(center=(SCREEN_WIDTH // 2, 175)),
+            title, title.get_rect(center=(SCREEN_WIDTH // 2, 100)),
         )
         # Full controls list so nobody has to leave the game to look
         # them up.
         key_x = SCREEN_WIDTH // 2 - 210
         desc_x = SCREEN_WIDTH // 2 - 60
-        y = 230
+        y = 175
         for key, desc in CONTROLS:
             self.surface.blit(font_sm.render(key, True, (255, 215, 0)), (key_x, y))
             self.surface.blit(font_sm.render(desc, True, (210, 210, 210)), (desc_x, y))
-            y += 34
+            y += 32
+        for _, b in self._pause_buttons:
+            b.draw(self.surface)
 
     def _draw_player_labels(self):
         if len(self.players) <= 1:

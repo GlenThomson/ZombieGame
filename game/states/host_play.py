@@ -79,6 +79,7 @@ class HostPlayState(PlayState):
             floor_grid=floor_grid,
             wall_style=wall_style,
             decor=decor or [],
+            map_name=map_name,
             local_player_id=0,
             players_spec=players_spec,
         )
@@ -190,6 +191,19 @@ class HostPlayState(PlayState):
                 "type": protocol.S_GAME_OVER,
                 "final_round": self.round_manager.current_round,
                 "final_kills": self.kill_count,
+                "map_name": getattr(self, "map_name", ""),
+                # Full scoreboard so clients see the same end screen.
+                "player_stats": [
+                    {
+                        "name": p.name,
+                        "kills": p.kills,
+                        "headshots": p.headshot_kills,
+                        "points_spent": p.points_spent,
+                        "perks": [pk.name for pk in
+                                  self.perk_system_by_player[p.player_id].owned()],
+                    }
+                    for p in self.players
+                ],
             })
         except Exception:
             pass

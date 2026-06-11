@@ -78,6 +78,7 @@ class LocalInputSource(InputSource):
             pygame.K_UP, pygame.K_DOWN, pygame.K_LEFT, pygame.K_RIGHT,
             pygame.K_f, pygame.K_g, pygame.K_r, pygame.K_t,
             pygame.K_1, pygame.K_2, pygame.K_3, pygame.K_4,
+            pygame.K_LSHIFT, pygame.K_RSHIFT,   # sprint
         ):
             if keys[k]:
                 held.append(k)

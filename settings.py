@@ -20,6 +20,15 @@ PLAYER_HEALTH = 100
 PLAYER_HIT_BOX_SIZE = TILE_SIZE * 0.8
 BARREL_OFFSET = vector(12, 12)
 STARTING_GRENADES = 4
+SPRINT_MULT = 1.35            # hold Shift to run (BO1 sprint, no stamina cap)
+# CoD health model: regenerate to full after a few seconds out of danger.
+PLAYER_REGEN_DELAY_MS = 4500
+PLAYER_REGEN_PER_FRAME = 0.012   # fraction of max health per frame (~1.4s to full)
+
+# Zombie melee (BO1: distinct swipes with recovery, not contact damage-per-frame)
+ZOMBIE_ATTACK_DAMAGE = 20
+ZOMBIE_ATTACK_COOLDOWN_MS = 700
+ZOMBIE_RISE_MS = 600          # rise-from-the-ground spawn animation
 
 # Zombie
 # Round 1 should be a slow stroll (clearly slower than the player) so the

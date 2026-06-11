@@ -4,16 +4,18 @@ keybinding changes so the two never drift apart again."""
 
 CONTROLS: list[tuple[str, str]] = [
     ("W A S D",      "move"),
+    ("Shift",        "sprint"),
     ("Mouse",        "aim"),
     ("Left click",   "shoot"),
+    ("Wheel",        "switch weapon"),
     ("R",            "reload"),
     ("F",            "interact (doors / buys / box / power)"),
     ("F (hold)",     "revive a downed teammate"),
-    ("G",            "throw grenade"),
-    ("T",            "throw monkey bomb (if you have one)"),
-    ("1 / 2 / 3",    "switch weapon slot"),
+    ("G",            "throw grenade (at your cursor)"),
+    ("T",            "throw monkey bomb"),
+    ("1 / 2 / 3",    "weapon slots"),
     ("Tab (hold)",   "scoreboard"),
-    ("P",            "pause (single-player only)"),
+    ("M",            "mute / unmute"),
+    ("P / ESC",      "pause menu (SP) - double-ESC leaves MP"),
     ("F11",          "fullscreen on / off"),
-    ("ESC",          "leave game / back to menu"),
 ]

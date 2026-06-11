@@ -141,6 +141,9 @@ class MysteryBox(pygame.sprite.Sprite):
             added = player.inventory.add(self.committed_weapon)
             if not added:
                 player.inventory.replace_equipped(self.committed_weapon)
+            from game.entities.effects import FloatingText
+            FloatingText(self.scene, player.pos, self.committed_weapon,
+                         color=(255, 215, 0))
             # Mystery box hands you a fully-loaded weapon (mag + reserve).
             for slot in player.inventory.slots:
                 if slot is not None and slot.definition.name == self.committed_weapon:

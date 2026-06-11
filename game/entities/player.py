@@ -74,6 +74,10 @@ class Player(pygame.sprite.Sprite):
         # `self.weapon` returns this instead of the inventory slot.
         self.weapon_override = None
         self.downs: int = 0   # scoreboard stat
+        # CoD health model + hit-marker bookkeeping.
+        self.last_damage_ms: int = -999_999
+        self.last_hit_ms: int = -999_999    # my bullet connected
+        self.last_kill_ms: int = -999_999   # my bullet killed
 
         # Down + revive state. When down the player can't move but CAN
         # shoot a fixed last-stand pistol (M1911) while crawling.
@@ -120,12 +124,23 @@ class Player(pygame.sprite.Sprite):
             return
         self._movement(snap)
         self._aim(snap.mouse_pos)
+        self._regen()
         weapon = self.weapon
         if weapon is not None:
             weapon.update()
         self._consume_input_events(snap)
         if snap.buttons[0]:
             self.shoot()
+
+    def _regen(self):
+        """CoD health model: untouched for a few seconds -> regen to full."""
+        from settings import PLAYER_REGEN_DELAY_MS, PLAYER_REGEN_PER_FRAME
+        if self.health >= self.max_health or self.health <= 0:
+            return
+        if pygame.time.get_ticks() - self.last_damage_ms < PLAYER_REGEN_DELAY_MS:
+            return
+        self.health = min(self.max_health,
+                          self.health + self.max_health * PLAYER_REGEN_PER_FRAME)
 
     def _update_down_state(self):
         now = pygame.time.get_ticks()
@@ -171,6 +186,11 @@ class Player(pygame.sprite.Sprite):
                     self.inventory.equip(int(ev.split(":", 1)[1]))
                 except ValueError:
                     pass
+            elif ev.startswith("cycle:"):
+                try:
+                    self.inventory.cycle(int(ev.split(":", 1)[1]))
+                except ValueError:
+                    pass
             # "interact" is consumed at scene level — ignored here.
 
     @property
@@ -181,11 +201,14 @@ class Player(pygame.sprite.Sprite):
 
     def _movement(self, snap: InputState):
         from game.systems.input import MOVEMENT_WASD, MOVEMENT_ARROWS
+        from settings import SPRINT_MULT
         # If the input includes movement from BOTH schemes, accept either.
         # Lets us run two local players (P1 WASD + P2 arrows) without a
         # per-player input scheme — the snapshot for P2 simply has the
         # arrow keys pressed when held.
         speed = self.speed
+        if snap.is_down(pygame.K_LSHIFT) or snap.is_down(pygame.K_RSHIFT):
+            speed *= SPRINT_MULT  # BO1 sprint: no stamina cap
         left = snap.is_down(pygame.K_a) or snap.is_down(pygame.K_LEFT)
         right = snap.is_down(pygame.K_d) or snap.is_down(pygame.K_RIGHT)
         up = snap.is_down(pygame.K_w) or snap.is_down(pygame.K_UP)
@@ -224,6 +247,7 @@ class Player(pygame.sprite.Sprite):
         if self.is_down:
             return
         self.health -= amount
+        self.last_damage_ms = pygame.time.get_ticks()
 
     def spend(self, amount: int) -> bool:
         """Charge `amount` points; returns True if the player had enough.

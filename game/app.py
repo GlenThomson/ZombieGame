@@ -18,6 +18,10 @@ class App:
     def __init__(self):
         pygame.init()
         pygame.mixer.init()
+        # Apply the persisted master volume (M toggles mute in-game).
+        from game import assets as _assets
+        from game import config as _config
+        _assets.set_master_volume(_config.volume())
         self.window = pygame.display.set_mode(
             (SCREEN_WIDTH, SCREEN_HEIGHT), pygame.RESIZABLE)
         # Logical canvas — every state draws here via State.surface.

@@ -81,6 +81,9 @@ class RoundManager:
             p.grenade_count = STARTING_GRENADES
         self.round_text_countdown = 700  # ~12 seconds at 60fps with the /2 fade
         self.scene.announce_event("round_start", {"sound": "end_round_sound.mp3"})
+        if self.is_hellhound_round(self.current_round):
+            # Dogs incoming — distant howl so the round FEELS different.
+            self.scene.announce_event("dog_round", {"sound": "dog_howl.wav"})
         self.zombies_to_spawn = self._target_zombie_count(self.current_round)
         self.time_between_spawns = self.spawn_window_seconds / max(1, self.zombies_to_spawn)
 
