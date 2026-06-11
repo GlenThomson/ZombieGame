@@ -253,4 +253,3 @@ class HostLobbyState(State):
                  SCREEN_HEIGHT - 180 + i * 22),
             )
 
-        pygame.display.flip()

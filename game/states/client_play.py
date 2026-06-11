@@ -290,7 +290,6 @@ class ClientPlayState(State):
             text.set_alpha(min(255, max(0, countdown)))
             self.surface.blit(text, text.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2)))
 
-        pygame.display.flip()
 
     def _draw_zombie(self, z: dict, cam_x, cam_y):
         kind = z.get("type", "Zombie")

@@ -899,7 +899,6 @@ class PlayState(State):
         if self.paused:
             self._draw_pause_overlay()
 
-        pygame.display.flip()
 
     def _draw_floor_grid(self):
         """Blit the floor tile beneath each cell. Only draws cells in the

@@ -66,4 +66,3 @@ class MapSelectState(State):
         for _, btn in self.buttons:
             btn.draw(self.surface)
         self.back_button.draw(self.surface)
-        pygame.display.flip()

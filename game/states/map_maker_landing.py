@@ -65,4 +65,3 @@ class MapMakerLandingState(State):
         for _, btn in self.map_buttons:
             btn.draw(self.surface)
         self.back_button.draw(self.surface)
-        pygame.display.flip()

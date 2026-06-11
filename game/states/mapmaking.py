@@ -332,7 +332,6 @@ class MapMakingState(State):
         self._draw_decor()
         self.toolbar.draw()
         self._draw_status_bar()
-        pygame.display.flip()
 
     def _draw_decor(self):
         if not self.decor:

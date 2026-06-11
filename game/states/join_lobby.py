@@ -190,7 +190,6 @@ class JoinLobbyState(State):
         else:
             self._draw_pre_connect_view()
         self.back_button.draw(self.surface)
-        pygame.display.flip()
 
     # ---- view: not connected yet ----
 

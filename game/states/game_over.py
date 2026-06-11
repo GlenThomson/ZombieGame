@@ -71,4 +71,3 @@ class GameOverState(State):
                     y += 30
 
         self.retry_button.draw(self.surface)
-        pygame.display.flip()

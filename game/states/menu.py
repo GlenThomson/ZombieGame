@@ -68,7 +68,6 @@ class MenuState(State):
             button.draw(self.surface)
         if self.show_controls:
             self._draw_controls_overlay()
-        pygame.display.flip()
 
     def _draw_controls_overlay(self):
         from game.ui.controls import CONTROLS

@@ -14,5 +14,6 @@ CONTROLS: list[tuple[str, str]] = [
     ("1 / 2 / 3",    "switch weapon slot"),
     ("Tab (hold)",   "scoreboard"),
     ("P",            "pause (single-player only)"),
+    ("F11",          "fullscreen on / off"),
     ("ESC",          "leave game / back to menu"),
 ]

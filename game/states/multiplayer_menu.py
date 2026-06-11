@@ -91,4 +91,3 @@ class MultiplayerMenuState(State):
 
         for _, b in self.buttons:
             b.draw(self.surface)
-        pygame.display.flip()
