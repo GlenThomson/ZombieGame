@@ -96,6 +96,7 @@ class ClientPlayState(State):
                 return
             mapping = {
                 pygame.K_g: "grenade",
+                pygame.K_t: "monkey",
                 pygame.K_r: "reload",
                 pygame.K_f: "interact",
                 pygame.K_1: "switch:0",
@@ -262,6 +263,13 @@ class ClientPlayState(State):
 
         # HUD for my player
         self._draw_hud()
+
+        # Active power-up banner (same renderer the host uses).
+        from game.ui.hud import draw_active_effects
+        draw_active_effects(self.surface, [
+            (e.get("name", ""), int(e.get("remaining_ms", 0)))
+            for e in snap.get("active_effects", [])
+        ])
 
         # Round overlay
         countdown = snap.get("round_text_countdown", 0)
@@ -570,6 +578,10 @@ class ClientPlayState(State):
             self.surface.blit(r, (slot_x + i * 50, 70))
         gren = self.weapon_font.render(f"Grenades: {me['grenades']}", True, MENU_TEXT)
         self.surface.blit(gren, (SCREEN_WIDTH - 220, 100))
+        if me.get("monkey_bombs", 0) > 0:
+            mk = self.weapon_font.render(
+                f"Monkey: {me['monkey_bombs']}", True, (220, 100, 160))
+            self.surface.blit(mk, (SCREEN_WIDTH - 100, 100))
 
         # Perks
         ypos = 130

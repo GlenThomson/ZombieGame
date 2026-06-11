@@ -115,6 +115,7 @@ class PlayState(State):
 
         self.timed_effects: dict[str, tuple[int, callable]] = {}
         self.points_multiplier = 1.0
+        self.instant_kill_active = False
         self.damage_flash_alpha = 0
         self.paused = False           # P key toggles in SP only
 
@@ -563,13 +564,18 @@ class PlayState(State):
         dt_ms = self.app.clock.get_time()
         dt_s = dt_ms / 1000.0
 
-        # Camera follows midpoint of standing players (or alive if all down).
-        followed = self.standing_players() or self.alive_players() or [self.local_player]
-        avg_x = sum(p.pos.x for p in followed) / len(followed)
-        avg_y = sum(p.pos.y for p in followed) / len(followed)
+        # Camera follows the LOCAL player — every screen (host included)
+        # tracks its own character. Falls back to a teammate only when the
+        # local player is fully dead so the spectator still sees the action.
+        me = self.local_player
+        if me.is_dead():
+            others = self.standing_players() or self.alive_players()
+            target = others[0] if others else me
+        else:
+            target = me
 
         class _CamTarget:
-            rect = pygame.Rect(int(avg_x), int(avg_y), 1, 1)
+            rect = pygame.Rect(int(target.pos.x), int(target.pos.y), 1, 1)
         self.camera.update(_CamTarget)
 
         self.bullets.update()
@@ -659,6 +665,8 @@ class PlayState(State):
                 bullet.hit_count += 1
                 is_headshot = bullet.hit_box.centery < zombie.rect.top + zombie.rect.height * 0.25
                 damage = bullet.damage * (HEADSHOT_DAMAGE_MULT if is_headshot else 1.0)
+                if self.instant_kill_active:
+                    damage = 999_999  # Insta-Kill: any hit drops any zombie
                 was_alive = zombie.health > 0
                 zombie.take_damage(damage)
                 shooter = self._player_by_id(bullet.shooter_id)
@@ -906,19 +914,29 @@ class PlayState(State):
                 self.surface.blit(img, (x * TILE_SIZE + cam_x, y * TILE_SIZE + cam_y))
 
     def _draw_pause_overlay(self):
+        from game.ui.controls import CONTROLS
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 160))
+        overlay.fill((0, 0, 0, 185))
         self.surface.blit(overlay, (0, 0))
-        font_big = pygame.font.Font(None, 110)
-        font_sm = pygame.font.Font(None, 32)
+        font_big = pygame.font.Font(None, 96)
+        font_sm = pygame.font.Font(None, 28)
         title = font_big.render("PAUSED", True, (220, 220, 220))
         self.surface.blit(
-            title, title.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 - 20)),
+            title, title.get_rect(center=(SCREEN_WIDTH // 2, 110)),
         )
         sub = font_sm.render("Press P to resume", True, (180, 180, 180))
         self.surface.blit(
-            sub, sub.get_rect(center=(SCREEN_WIDTH // 2, SCREEN_HEIGHT // 2 + 50)),
+            sub, sub.get_rect(center=(SCREEN_WIDTH // 2, 175)),
         )
+        # Full controls list so nobody has to leave the game to look
+        # them up.
+        key_x = SCREEN_WIDTH // 2 - 210
+        desc_x = SCREEN_WIDTH // 2 - 60
+        y = 230
+        for key, desc in CONTROLS:
+            self.surface.blit(font_sm.render(key, True, (255, 215, 0)), (key_x, y))
+            self.surface.blit(font_sm.render(desc, True, (210, 210, 210)), (desc_x, y))
+            y += 34
 
     def _draw_player_labels(self):
         if len(self.players) <= 1:

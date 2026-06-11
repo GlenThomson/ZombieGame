@@ -44,24 +44,12 @@ class Pickup(pygame.sprite.Sprite):
 
     def update(self):
         import math
+        from settings import PICKUP_FLICKER_WINDOW_MS
         now = pygame.time.get_ticks()
         elapsed = now - self.spawn_time
         if elapsed > PICKUP_DURATION_MS:
             self.kill()
             return
-
-        # Floating bob.
-        self.rect.y = self._anchor_y + int(math.sin(now / 200) * 3)
-
-        # Speed up flicker as expiry approaches.
-        time_left = PICKUP_DURATION_MS - elapsed
-        if time_left < PICKUP_DURATION_MS / 2:
-            self.flicker_period_ms = max(80, self.flicker_period_ms - 3)
-
-        if now >= self.next_flicker_at:
-            self.visible = not self.visible
-            self.image.set_alpha(255 if self.visible else 0)
-            self.next_flicker_at = now + self.flicker_period_ms
 
         # Any standing player walking over a pickup collects it for everyone.
         for player in self.scene.players:
@@ -71,3 +59,23 @@ class Pickup(pygame.sprite.Sprite):
                 effects.apply(self.kind, self.scene, collector=player)
                 self.kill()
                 return
+
+        # Floating bob.
+        self.rect.y = self._anchor_y + int(math.sin(now / 200) * 3)
+
+        # Solid for most of the lifetime; only blink during the final
+        # window (BO1 style), speeding up as expiry approaches.
+        time_left = PICKUP_DURATION_MS - elapsed
+        if time_left >= PICKUP_FLICKER_WINDOW_MS:
+            if not self.visible:
+                self.visible = True
+                self.image.set_alpha(255)
+            return
+        # Blink faster the closer we are to disappearing.
+        urgency = 1.0 - (time_left / PICKUP_FLICKER_WINDOW_MS)
+        self.flicker_period_ms = max(80, int(600 - 520 * urgency))
+
+        if now >= self.next_flicker_at:
+            self.visible = not self.visible
+            self.image.set_alpha(255 if self.visible else 0)
+            self.next_flicker_at = now + self.flicker_period_ms

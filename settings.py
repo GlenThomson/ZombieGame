@@ -54,9 +54,11 @@ MONKEY_BOMB_RADIUS_PX = 200
 MONKEY_BOMB_DAMAGE = 9999
 STARTING_MONKEY_BOMBS = 0   # CoD: only obtained from mystery box rolls / drops
 
-# Pickups
-PICKUP_DURATION_MS = 8000
-PICKUP_DROP_CHANCE = 100  # 1 in N
+# Pickups (BO1: power-ups sit for ~30s, blinking near the end)
+PICKUP_DURATION_MS = 30_000
+PICKUP_FLICKER_WINDOW_MS = 10_000  # start blinking in the last N ms
+PICKUP_DROP_CHANCE = 50  # 1 in N zombie kills drops a power-up
+NUKE_POINTS = 400        # flat team-wide bonus when a Nuke is grabbed
 
 # Points (CoD economy)
 STARTING_POINTS = 500

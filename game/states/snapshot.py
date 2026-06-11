@@ -82,6 +82,12 @@ def build_snapshot(scene) -> dict:
         "damage_flash_alpha": scene.damage_flash_alpha,
         "points_multiplier": scene.points_multiplier,
         "power_on": getattr(scene, "power_on", True),
+        # Active timed power-ups (Double Points / Insta-Kill / Fire Sale)
+        # with remaining ms so clients can show the same HUD banner.
+        "active_effects": [
+            {"name": name, "remaining_ms": max(0, expiry - pygame.time.get_ticks())}
+            for name, (expiry, _) in scene.timed_effects.items()
+        ],
     }
 
 

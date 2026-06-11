@@ -31,8 +31,12 @@ class WallBuy(pygame.sprite.Sprite):
         self.x_tile = x_tile
         self.y_tile = y_tile
         self.weapon_name = weapon_name
-        self.buy_cost = WALL_BUY_BUY_COST
-        self.ammo_cost = WALL_BUY_AMMO_COST
+        # Per-weapon pricing (BO1): the gun's wall price, refill = half.
+        # Unknown weapon names fall back to the flat legacy costs.
+        from game.weapons.definitions import WEAPON_DEFS
+        wdef = WEAPON_DEFS.get(weapon_name)
+        self.buy_cost = wdef.wall_cost if wdef else WALL_BUY_BUY_COST
+        self.ammo_cost = wdef.ammo_cost if wdef else WALL_BUY_AMMO_COST
 
         import os
         from game import assets

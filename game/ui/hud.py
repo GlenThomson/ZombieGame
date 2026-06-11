@@ -5,6 +5,33 @@ import pygame
 from settings import SCREEN_WIDTH, SCREEN_HEIGHT, GOLD, MENU_TEXT, MENU_TEXT_DIM
 
 
+# Display names + colours for active timed power-ups.
+EFFECT_BANNERS = {
+    "instant_kill":  ("INSTA-KILL",    (255, 60, 60)),
+    "double_points": ("DOUBLE POINTS", (80, 255, 80)),
+    "fire_sale":     ("FIRE SALE",     (255, 100, 240)),
+}
+
+
+def draw_active_effects(surface, effects: list[tuple[str, int]]):
+    """Top-centre banner for each active power-up: name + seconds left.
+    `effects` is a list of (effect_name, remaining_ms)."""
+    if not effects:
+        return
+    font = pygame.font.Font(None, 34)
+    y = 12
+    for name, remaining_ms in sorted(effects):
+        label, color = EFFECT_BANNERS.get(name, (name.upper(), (220, 220, 220)))
+        secs = max(0, remaining_ms) // 1000
+        text = font.render(f"{label}  {secs}s", True, color)
+        bg = pygame.Surface((text.get_width() + 20, text.get_height() + 8), pygame.SRCALPHA)
+        bg.fill((0, 0, 0, 150))
+        cx = SCREEN_WIDTH // 2
+        surface.blit(bg, bg.get_rect(midtop=(cx, y)))
+        surface.blit(text, text.get_rect(midtop=(cx, y + 4)))
+        y += text.get_height() + 14
+
+
 class HUD:
     def __init__(self):
         self.label_font = pygame.font.Font(None, 36)
@@ -91,6 +118,12 @@ class HUD:
         self._draw_perks(surface, scene.player)
         self._draw_interaction_prompt(surface, scene)
         self.draw_minimap(surface, scene)
+        # Active power-up banner (Double Points / Insta-Kill / Fire Sale).
+        now = pygame.time.get_ticks()
+        draw_active_effects(surface, [
+            (name, expiry - now)
+            for name, (expiry, _) in scene.timed_effects.items()
+        ])
 
     def _draw_health_bar(self, surface, player):
         bar_w_max = 150

@@ -70,9 +70,11 @@ class HostLobbyState(State):
         # UDP discovery so clients see this game in their join list. Lives
         # for the duration of the lobby; HostPlayState reuses it via the
         # `announcer` kwarg on switch.
+        from game import config
         from game.net.discovery import DiscoveryAnnouncer
+        self.host_name = config.player_name()
         self.announcer = DiscoveryAnnouncer(
-            host_name="Host", game_port=DEFAULT_HOST_PORT,
+            host_name=self.host_name, game_port=DEFAULT_HOST_PORT,
         )
         self.announcer.max_players = MAX_PLAYERS
         self.announcer.start()
@@ -152,6 +154,7 @@ class HostLobbyState(State):
             server=self.server,
             lobby_clients=clients,
             announcer=announcer,
+            host_name=self.host_name,
             map_name=fname,
             grid=data["grid"],
             background=data["background_image_path"],
@@ -183,7 +186,7 @@ class HostLobbyState(State):
         self.server.broadcast({
             "type": protocol.S_LOBBY,
             "players": [{"id": c.player_id, "name": c.name} for c in clients],
-            "hosting_name": "Host",
+            "hosting_name": self.host_name,
             "map_name": self.maps[self.selected_map_idx] if self.selected_map_idx >= 0 else "",
         })
         # Keep the LAN announcement fresh — map selection and player
@@ -213,7 +216,7 @@ class HostLobbyState(State):
         )
         self.surface.blit(players_label, (SCREEN_WIDTH // 2 - players_label.get_width() // 2, 220))
         ypos = 270
-        host_line = self.body_font.render("- Host (you)", True, MENU_TEXT)
+        host_line = self.body_font.render(f"- {self.host_name} (you)", True, MENU_TEXT)
         self.surface.blit(host_line, (SCREEN_WIDTH // 2 - 120, ypos))
         ypos += 30
         for c in clients:

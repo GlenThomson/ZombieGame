@@ -121,8 +121,10 @@ class JoinLobbyState(State):
             self.status = "Already connected. Waiting for host..."
             return
         self.status = f"Connecting to {self.ip_text}:{port}..."
+        from game import config
         self.client = NetClient()
-        ok = self.client.connect(self.ip_text, port=port, name="Player", timeout=4.0)
+        ok = self.client.connect(self.ip_text, port=port,
+                                 name=config.player_name(), timeout=4.0)
         if not ok:
             err = (self.client.last_error or "unknown").lower()
             if "timed out" in err or "10060" in err or "no route" in err:

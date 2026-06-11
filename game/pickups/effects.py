@@ -46,25 +46,40 @@ def apply(name: str, scene, collector=None):
 
 @effect("instant_kill", weight=1.0, icon=("IK", (220, 30, 30)))
 def _instant_kill(scene, collector=None):
+    """BO1: 30 seconds where EVERY zombie (including new spawns) dies to a
+    single hit. Implemented as a scene flag the damage code checks."""
     scene.announce_event("instant_kill", {"sound": "instant_kill.mp3"})
-    for zombie in scene.zombies:
-        zombie.health = 1
+    scene.start_timed_effect(
+        "instant_kill", duration_ms=30_000,
+        on_apply=lambda: setattr(scene, "instant_kill_active", True),
+        on_expire=lambda: setattr(scene, "instant_kill_active", False),
+    )
 
 
 @effect("nuke_pickup", weight=2.0, icon=("NK", (60, 60, 80)))
 def _nuke(scene, collector=None):
+    from settings import NUKE_POINTS
+    from game.entities.effects import FloatingText
     scene.announce_event("nuke", {"sound": "kaboom.mp3"})
     scene.announce_event("nuke", {"sound": "nuke_sound.mp3"})
     for zombie in scene.zombies:
         zombie.kill()
+    # BO1: everyone gets a flat 400 points.
+    for player in scene.players:
+        if not player.is_dead():
+            player.points += NUKE_POINTS
+    FloatingText(scene, scene.local_player.pos, f"+{NUKE_POINTS}",
+                 color=(120, 255, 120))
 
 
 @effect("max_ammo", weight=1.5, icon=("MA", (220, 200, 30)))
 def _max_ammo(scene, collector=None):
+    from settings import STARTING_GRENADES
     scene.announce_event("max_ammo", {"sound": "end_round_sound.mp3"})
-    # All players' weapons get a full mag + full reserve (CoD: max-ammo
-    # helps the whole team).
+    # All players' weapons get a full mag + full reserve, and grenades
+    # are restocked (CoD: max-ammo helps the whole team).
     for player in scene.players:
+        player.grenade_count = max(player.grenade_count, STARTING_GRENADES)
         for slot in player.inventory.slots:
             if slot is None:
                 continue

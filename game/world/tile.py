@@ -118,7 +118,11 @@ _BLOCKING_TILES: frozenset[int] = frozenset({
     TileType.WALL,
     TileType.INVISIBLE_WALL,
     TileType.DOOR_CLOSED,
-    TileType.WINDOW,
+    # WINDOW is deliberately NOT here: zombies must be able to PATH through
+    # window tiles so they walk up to sealed buildings, get physically held
+    # by the Window sprite (it sits in scene.walls until its planks are
+    # smashed), break in, and continue — BO1 barrier behaviour. Movement is
+    # still blocked because collision uses the sprite group, not this set.
     TileType.WALL_BUY,
     TileType.PERK_MACHINE,
     TileType.MYSTERY_BOX,

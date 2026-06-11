@@ -71,22 +71,27 @@ class MenuState(State):
         pygame.display.flip()
 
     def _draw_controls_overlay(self):
+        from game.ui.controls import CONTROLS
         overlay = pygame.Surface((SCREEN_WIDTH, SCREEN_HEIGHT), pygame.SRCALPHA)
-        overlay.fill((0, 0, 0, 200))
+        overlay.fill((0, 0, 0, 215))
         self.surface.blit(overlay, (0, 0))
-        lines = [
-            "WASD            move",
-            "Mouse           aim",
-            "Left click       shoot",
-            "G                throw grenade",
-            "1 / 2 / 3 / 4    switch weapon",
-            "R                reload",
-            "ESC              back to menu",
-            "",
-            "Click anywhere to dismiss",
-        ]
-        y = SCREEN_HEIGHT // 2 - len(lines) * 18
-        for line in lines:
-            surf = self._controls_font.render(line, True, (220, 220, 220))
-            self.surface.blit(surf, (SCREEN_WIDTH // 2 - 160, y))
-            y += 36
+
+        title_font = pygame.font.Font(None, 56)
+        title = title_font.render("CONTROLS", True, (255, 215, 0))
+        self.surface.blit(
+            title, title.get_rect(center=(SCREEN_WIDTH // 2, 90)))
+
+        key_x = SCREEN_WIDTH // 2 - 220
+        desc_x = SCREEN_WIDTH // 2 - 60
+        y = 160
+        for key, desc in CONTROLS:
+            key_surf = self._controls_font.render(key, True, (255, 215, 0))
+            desc_surf = self._controls_font.render(desc, True, (220, 220, 220))
+            self.surface.blit(key_surf, (key_x, y))
+            self.surface.blit(desc_surf, (desc_x, y))
+            y += 38
+
+        hint = self._controls_font.render(
+            "Click anywhere to go back", True, (140, 140, 140))
+        self.surface.blit(
+            hint, hint.get_rect(center=(SCREEN_WIDTH // 2, y + 30)))

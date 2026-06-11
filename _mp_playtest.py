@@ -87,9 +87,15 @@ def main():
     assert host_play.__class__.__name__ == "HostPlayState"
     print(f"  host has {len(host_play.players)} players")
 
-    # Each client should have received S_START_GAME (broadcast before switch)
-    a_start = [m for m in client_a.drain_incoming() if m["type"] == protocol.S_START_GAME]
-    b_start = [m for m in client_b.drain_incoming() if m["type"] == protocol.S_START_GAME]
+    # Each client should have received S_START_GAME. Payload includes the
+    # map's background bytes (can be ~1MB), so poll up to 5s rather than
+    # assuming it lands instantly.
+    a_start, b_start = [], []
+    deadline = time.time() + 5.0
+    while time.time() < deadline and not (a_start and b_start):
+        a_start += [m for m in client_a.drain_incoming() if m["type"] == protocol.S_START_GAME]
+        b_start += [m for m in client_b.drain_incoming() if m["type"] == protocol.S_START_GAME]
+        time.sleep(0.05)
     assert a_start and b_start, "missing S_START_GAME"
     print(f"  S_START_GAME map: {a_start[-1]['map_name']}")
 
