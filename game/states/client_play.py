@@ -215,27 +215,40 @@ class ClientPlayState(State):
                     color = (255, 80, 255) if pap else GOLD
                 pygame.draw.rect(self.surface, color, (wx + cam_x - size // 2, wy + cam_y - size // 2, size, size))
 
-        # Monkey bombs
+        # Monkey bombs — same animated cymbal toy the host renders.
+        from game.entities.grenade import explosion_frames as _expl_frames
+        now_ms = pygame.time.get_ticks()
         for m in snap.get("monkey_bombs", []):
             wx, wy = m["pos"]
-            surf = pygame.Surface((24, 24), pygame.SRCALPHA)
-            pygame.draw.circle(surf, (220, 100, 160), (12, 12), 12)
-            pygame.draw.circle(surf, (60, 30, 50), (12, 12), 12, 2)
-            self.surface.blit(surf, surf.get_rect(center=(wx + cam_x, wy + cam_y)))
+            if m.get("exploding"):
+                frames = _expl_frames()
+                idx = min(int(m.get("frame", 0)), len(frames) - 1)
+                img = frames[idx]
+            else:
+                name = f"monkey_bomb_{(now_ms // 160) % 2}.png"
+                if os.path.isfile(os.path.join("assets", "images", name)):
+                    img = assets.image(name, scale=(30, 30))
+                    wig = 10 if (now_ms // 160) % 2 else -10
+                    img = pygame.transform.rotate(img, wig)
+                    if m.get("flash") and (now_ms // 90) % 2 == 0:
+                        img = img.copy()
+                        img.fill((120, 120, 120), special_flags=pygame.BLEND_RGB_ADD)
+                else:
+                    img = pygame.Surface((24, 24), pygame.SRCALPHA)
+                    pygame.draw.circle(img, (220, 100, 160), (12, 12), 12)
+            self.surface.blit(img, img.get_rect(center=(wx + cam_x, wy + cam_y)))
 
-        # Grenades
+        # Grenades — height-scaled while airborne, real explosion frames.
         for g in snap.get("grenades", []):
             wx, wy = g["pos"]
             if g.get("exploding"):
-                # Crude fading orange burst (proper anim lives on host)
-                radius = 24 + g.get("frame", 0) * 4
-                surf = pygame.Surface((radius * 2, radius * 2), pygame.SRCALPHA)
-                pygame.draw.circle(surf, (255, 140, 30, 200 - g.get("frame", 0) * 12),
-                                   (radius, radius), radius)
-                self.surface.blit(surf, (wx + cam_x - radius, wy + cam_y - radius))
+                frames = _expl_frames()
+                idx = min(int(g.get("frame", 0)), len(frames) - 1)
+                img = frames[idx]
             else:
-                grenade_img = assets.image("grenade.png", scale=(20, 20))
-                self.surface.blit(grenade_img, grenade_img.get_rect(center=(wx + cam_x, wy + cam_y)))
+                size = max(8, int(20 * float(g.get("scale", 1.0))))
+                img = assets.image("grenade.png", scale=(size, size))
+            self.surface.blit(img, img.get_rect(center=(wx + cam_x, wy + cam_y)))
 
         # Zombies
         for z in snap.get("zombies", []):

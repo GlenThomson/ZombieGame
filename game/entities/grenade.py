@@ -1,4 +1,11 @@
-"""Thrown grenade with bounce + radial damage explosion."""
+"""Thrown grenade: cursor-aimed arc throw, wall bounces, radial damage.
+
+Throw model (shared with MonkeyBomb): the projectile flies toward the
+aimed point (clamped to max range) over a fixed flight time, decelerating
+as it goes, while the sprite scales up then down to fake a height arc.
+After landing it sits until the fuse pops.
+"""
+import math
 import pygame
 
 from settings import (
@@ -10,6 +17,11 @@ from settings import (
 from game import assets
 
 vector = pygame.math.Vector2
+
+GRENADE_MAX_RANGE = 340       # px — how far you can lob one
+GRENADE_MIN_RANGE = 50
+FLIGHT_FRAMES_BASE = 16       # short toss
+FLIGHT_FRAMES_PER_PX = 0.055  # extra flight time with distance
 
 
 def _load_explosion_frames():
@@ -26,59 +38,113 @@ def _load_explosion_frames():
 _explosion_frames_cache: list = []
 
 
+def explosion_frames() -> list:
+    global _explosion_frames_cache
+    if not _explosion_frames_cache:
+        _explosion_frames_cache = _load_explosion_frames()
+    return _explosion_frames_cache
+
+
+class ThrowArc:
+    """Cursor-aimed lob: position + fake-height scale over a fixed flight.
+    Used by Grenade and MonkeyBomb so both throw identically."""
+
+    def __init__(self, start: vector, target: tuple | None, angle_deg: float,
+                 max_range: float = GRENADE_MAX_RANGE):
+        if target is not None:
+            to = vector(target[0], target[1]) - start
+            dist = to.length()
+            if dist < 1:
+                to, dist = vector(1, 0), 1.0
+        else:
+            # Legacy fallback: lob in the facing direction at 60% range.
+            to = vector(1, 0).rotate(-angle_deg)
+            dist = max_range * 0.6
+        dist = max(GRENADE_MIN_RANGE, min(max_range, dist))
+        self.direction = to.normalize()
+        self.total_frames = max(8, int(FLIGHT_FRAMES_BASE + dist * FLIGHT_FRAMES_PER_PX))
+        self.frame = 0
+        # Linear deceleration that integrates to `dist` over total_frames.
+        self.speed0 = 2.0 * dist / self.total_frames
+
+    @property
+    def landed(self) -> bool:
+        return self.frame >= self.total_frames
+
+    def step_velocity(self) -> vector:
+        """Velocity for this frame; call once per frame while airborne."""
+        if self.landed:
+            return vector(0, 0)
+        t = self.frame / self.total_frames
+        speed = self.speed0 * (1.0 - t)
+        self.frame += 1
+        return self.direction * speed
+
+    def height_scale(self) -> float:
+        """1.0 on the ground, up to ~1.8 at the top of the arc."""
+        if self.landed:
+            return 1.0
+        t = self.frame / self.total_frames
+        return 1.0 + 0.8 * math.sin(math.pi * t)
+
+    def bounce(self, normal_x: bool, normal_y: bool):
+        """Reflect the remaining flight off a wall."""
+        if normal_x:
+            self.direction.x *= -1
+        if normal_y:
+            self.direction.y *= -1
+
+
 class Grenade(pygame.sprite.Sprite):
-    def __init__(self, scene, x: float, y: float, angle_deg: float):
+    BASE_SIZE = 20
+
+    def __init__(self, scene, x: float, y: float, angle_deg: float,
+                 target: tuple | None = None):
         super().__init__(scene.all_sprites, scene.grenades)
         self.scene = scene
-        self.image = assets.image("grenade.png", scale=(20, 20))
+        self.base_image = assets.image("grenade.png", scale=(self.BASE_SIZE, self.BASE_SIZE))
+        self.image = self.base_image
         self.rect = self.image.get_rect()
         self.pos = vector(x, y)
         self.rect.center = self.pos
-        self.vel = vector(GRENADE_SPEED, 0).rotate(-angle_deg)
+        self.arc = ThrowArc(self.pos, target, angle_deg)
+        self.vel = vector(0, 0)   # kept for compat (monkey-bomb tests etc.)
 
         self.spawn_time = pygame.time.get_ticks()
-        self.bounce_delay = 0
-        self.damping = 0.6
-        self.time_between_bounce = 30
-        self.time_until_bounce = self.time_between_bounce
-
+        self.bounce_cooldown = 0
         self.bounce_sound = assets.sound("Grenade Bounce.mp3")
         self.explosion_sound = assets.sound("grenade_explosion.mp3")
-
-        global _explosion_frames_cache
-        if not _explosion_frames_cache:
-            _explosion_frames_cache = _load_explosion_frames()
-        self.explosion_frames = _explosion_frames_cache
+        self.explosion_frames = explosion_frames()
 
         self.exploding = False
         self.frame_index = 0
         self.last_frame_update = pygame.time.get_ticks()
         self.frame_rate_ms = 50
 
+    @property
+    def height_scale(self) -> float:
+        return self.arc.height_scale()
+
     def update(self):
         if self.exploding:
             self._advance_explosion_animation()
             return
 
-        self.bounce_delay -= 1
-        self.pos += self.vel
-        self.rect.center = self.pos
-
-        if self.vel.length() < 1:
-            self.vel = vector(0, 0)
-        else:
+        if not self.arc.landed:
+            step = self.arc.step_velocity()
+            self.pos += step
             self._check_wall_collision()
-            self.time_until_bounce -= 1
-
+            # Fake height: scale the sprite along the arc.
+            s = self.arc.height_scale()
+            size = max(8, int(self.BASE_SIZE * s))
+            self.image = pygame.transform.scale(self.base_image, (size, size))
+            self.rect = self.image.get_rect(center=self.pos)
+            if self.arc.landed:
+                self.bounce_sound.play()
+                self.image = self.base_image
+                self.rect = self.image.get_rect(center=self.pos)
         if pygame.time.get_ticks() - self.spawn_time > GRENADE_DURATION:
             self._explode()
-            return
-
-        if self.vel != vector(0, 0) and self.time_until_bounce <= 0:
-            self.bounce_sound.play()
-            self.time_between_bounce *= 0.6
-            self.time_until_bounce = self.time_between_bounce
-            self.vel *= self.damping
 
     def _advance_explosion_animation(self):
         now = pygame.time.get_ticks()
@@ -94,23 +160,26 @@ class Grenade(pygame.sprite.Sprite):
         self.rect = self.image.get_rect(center=center)
 
     def _check_wall_collision(self):
-        for wall in self.scene.walls:
-            if self.rect.colliderect(wall.rect):
-                self._bounce(wall)
-
-    def _bounce(self, wall):
-        self.bounce_sound.play()
-        if self.bounce_delay > 0:
+        if self.bounce_cooldown > 0:
+            self.bounce_cooldown -= 1
             return
-        self.bounce_delay = 2
-        if abs(self.rect.left - wall.rect.right) < 20 or abs(self.rect.right - wall.rect.left) < 20:
-            self.vel.x *= -1
-        if abs(self.rect.top - wall.rect.bottom) < 20 or abs(self.rect.bottom - wall.rect.top) < 20:
-            self.vel.y *= -1
-        self.vel *= self.damping
+        for wall in self.scene.walls:
+            if not self.rect.colliderect(wall.rect):
+                continue
+            # Pick the bounce axis from which side penetrates least.
+            dx = min(abs(self.rect.right - wall.rect.left),
+                     abs(wall.rect.right - self.rect.left))
+            dy = min(abs(self.rect.bottom - wall.rect.top),
+                     abs(wall.rect.bottom - self.rect.top))
+            self.arc.bounce(normal_x=dx <= dy, normal_y=dy <= dx)
+            # Step out of the wall so we don't re-collide every frame.
+            self.pos += self.arc.direction * 6
+            self.bounce_cooldown = 4
+            self.bounce_sound.play()
+            break
 
     def _explode(self):
-        radius = GRENADE_EXPLOSION_RADIUS_TILES * self.rect.width
+        radius = GRENADE_EXPLOSION_RADIUS_TILES * self.BASE_SIZE
         explosion_rect = pygame.Rect(0, 0, radius, radius)
         explosion_rect.center = self.rect.center
         self.explosion_sound.play()

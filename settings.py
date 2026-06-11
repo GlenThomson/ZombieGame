@@ -43,7 +43,7 @@ BULLET_DAMAGE = 1
 
 # Grenade
 GRENADE_SPEED = 7
-GRENADE_DURATION = 2000  # ms until explosion
+GRENADE_DURATION = 2800  # ms from throw to explosion (flight + sit time)
 GRENADE_EXPLOSION_RADIUS_TILES = 6  # in player-rect-widths
 GRENADE_DAMAGE = 100
 

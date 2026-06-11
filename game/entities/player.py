@@ -160,9 +160,9 @@ class Player(pygame.sprite.Sprite):
     def _consume_input_events(self, snap: InputState):
         for ev in snap.events:
             if ev == "grenade":
-                self.throw_grenade()
+                self.throw_grenade(target=snap.mouse_pos)
             elif ev == "monkey":
-                self.throw_monkey_bomb()
+                self.throw_monkey_bomb(target=snap.mouse_pos)
             elif ev == "reload":
                 if self.weapon is not None:
                     self.weapon.reload()
@@ -248,7 +248,9 @@ class Player(pygame.sprite.Sprite):
         if self.weapon is not None:
             self.weapon.shoot()
 
-    def throw_grenade(self):
+    def throw_grenade(self, target: tuple | None = None):
+        """Lob a grenade toward `target` (world coords, usually the cursor).
+        Falls back to the facing direction when no target is given."""
         if self.is_down or self.grenade_count <= 0:
             return False
         # Limit grenades-in-flight per player, not globally.
@@ -256,21 +258,19 @@ class Player(pygame.sprite.Sprite):
         if in_flight > 0:
             return False
         from game.entities.grenade import Grenade
-        grenade = Grenade(self.scene, self.pos.x, self.pos.y, self.angle)
+        grenade = Grenade(self.scene, self.pos.x, self.pos.y, self.angle,
+                          target=target)
         grenade.thrower_id = self.player_id
         self.grenade_count -= 1
         return True
 
-    def throw_monkey_bomb(self):
+    def throw_monkey_bomb(self, target: tuple | None = None):
+        """Throw the monkey toward `target` with the same arc as a grenade."""
         if self.is_down or self.monkey_bomb_count <= 0:
             return False
         from game.entities.monkey_bomb import MonkeyBomb
-        # Place a few tiles in front of the player.
-        import math
-        rad = math.radians(self.angle)
-        offset = 60
-        x = self.pos.x + offset * math.cos(rad)
-        y = self.pos.y + offset * -math.sin(rad)
-        MonkeyBomb(self.scene, x, y, thrower_id=self.player_id)
+        MonkeyBomb(self.scene, self.pos.x, self.pos.y,
+                   thrower_id=self.player_id, target=target,
+                   angle_deg=self.angle)
         self.monkey_bomb_count -= 1
         return True

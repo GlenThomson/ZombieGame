@@ -11,6 +11,7 @@ from settings import (
     SCREEN_HEIGHT,
     REVIVE_HOLD_MS,
     PLAYER_TINTS,
+    MONKEY_BOMB_DURATION_MS,
 )
 from game.systems.interaction import find_focused
 from game.systems.input import InputState
@@ -51,11 +52,23 @@ def build_snapshot(scene) -> dict:
                 "pos": (float(g.pos.x), float(g.pos.y)),
                 "exploding": bool(getattr(g, "exploding", False)),
                 "frame": int(getattr(g, "frame_index", 0)),
+                "scale": float(getattr(g, "height_scale", 1.0)),
             }
             for g in scene.grenades
         ],
         "monkey_bombs": [
-            {"pos": (float(m.pos.x), float(m.pos.y))}
+            {
+                "pos": (float(m.pos.x), float(m.pos.y)),
+                "landed": bool(getattr(m, "landed", True)),
+                "exploding": bool(getattr(m, "exploding", False)),
+                "frame": int(getattr(m, "frame_index", 0)),
+                "flash": bool(
+                    getattr(m, "landed", False)
+                    and not getattr(m, "exploding", False)
+                    and (pygame.time.get_ticks() - getattr(m, "landed_at_ms", 0))
+                        > MONKEY_BOMB_DURATION_MS - 1200
+                ),
+            }
             for m in scene.monkey_bombs
         ],
         "blood": [
