@@ -16,6 +16,27 @@ LASER_COLOR = (120, 255, 160)        # bright green
 LASER_PAP_COLOR = (255, 100, 255)    # vivid magenta when Pack-a-Punched
 LASER_CORE = (255, 255, 255)
 
+# Thundergun shockwave: each pellet is an expanding translucent air-ripple
+# ring with a short lifetime (the gun is a close-range wall of force).
+BLAST_MAX_AGE_FRAMES = 16
+BLAST_START_RADIUS = 6
+BLAST_GROWTH_PER_FRAME = 1.9
+
+
+def _blast_ring(radius: int, age_frac: float) -> pygame.Surface:
+    """Translucent expanding air-ring, fading as it travels."""
+    d = radius * 2
+    surf = pygame.Surface((d, d), pygame.SRCALPHA)
+    fade = max(0.0, 1.0 - age_frac)
+    pygame.draw.circle(surf, (200, 220, 255, int(150 * fade)),
+                       (radius, radius), radius, max(2, radius // 4))
+    pygame.draw.circle(surf, (255, 255, 255, int(90 * fade)),
+                       (radius, radius), max(1, int(radius * 0.65)),
+                       max(1, radius // 6))
+    pygame.draw.circle(surf, (160, 190, 255, int(36 * fade)),
+                       (radius, radius), radius)
+    return surf
+
 # Standard bullet colour by effect_kind, for both base + PaP variants.
 # PaP keeps the same hue family but more saturated / brighter so you can
 # read at a glance whether a flying round is upgraded.
@@ -34,14 +55,18 @@ class Bullet(pygame.sprite.Sprite):
         super().__init__(scene.all_sprites, scene.bullets)
         self.scene = scene
         self.is_packed = is_packed
-        # Lasers get a longer, brighter sprite. Other bullets stay 3x3 but
-        # PaP'd ones are 4x4 so they're visibly chunkier.
+        # Lasers get a longer, brighter sprite; blast (Thundergun) pellets
+        # are expanding shockwave rings; other bullets stay 3x3 (4x4 PaP'd).
         if effect_kind == "laser":
             color = LASER_PAP_COLOR if is_packed else LASER_COLOR
             self.image = pygame.Surface((16 if is_packed else 14, 5 if is_packed else 4), pygame.SRCALPHA)
             pygame.draw.rect(self.image, color, self.image.get_rect(), border_radius=2)
             pygame.draw.line(self.image, LASER_CORE, (1, self.image.get_height() // 2),
                              (self.image.get_width() - 2, self.image.get_height() // 2), 1)
+        elif effect_kind == "blast":
+            self.blast_age = 0
+            self.blast_radius = BLAST_START_RADIUS
+            self.image = _blast_ring(self.blast_radius, 0.0)
         else:
             size = 4 if is_packed else 3
             self.image = pygame.Surface((size, size))
@@ -85,6 +110,22 @@ class Bullet(pygame.sprite.Sprite):
     def update(self):
         prev_pos = vector(self.pos)
         self.pos += self.vel
+
+        # Thundergun shockwave: grow + fade, die at max range.
+        if self.effect_kind == "blast":
+            self.blast_age += 1
+            if self.blast_age > BLAST_MAX_AGE_FRAMES:
+                self.kill()
+                return
+            self.blast_radius = int(BLAST_START_RADIUS
+                                    + self.blast_age * BLAST_GROWTH_PER_FRAME)
+            self.image = _blast_ring(self.blast_radius,
+                                     self.blast_age / BLAST_MAX_AGE_FRAMES)
+            self.rect = self.image.get_rect(center=self.pos)
+            # The wavefront's hitbox grows with the ring so the cone
+            # actually connects like a wall of force.
+            self.hit_box.size = (self.blast_radius * 2, self.blast_radius * 2)
+
         self.hit_box.center = self.pos
         self.rect.center = self.hit_box.center
 

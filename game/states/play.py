@@ -758,7 +758,7 @@ class PlayState(State):
                 if bullet.effect_kind == "chain":
                     self._chain_lightning_from(zombie, damage, shooter, mult)
                 elif bullet.effect_kind == "blast":
-                    self._blast_knockback(zombie)
+                    self._blast_knockback(zombie, shooter, bullet)
                 if bullet.hit_count >= bullet.penetration:
                     bullet.kill()
 
@@ -818,19 +818,19 @@ class PlayState(State):
                 FloatingText(self, best.pos, f"+{pts}", color=(140, 200, 255))
             prev = best
 
-    def _blast_knockback(self, zombie):
-        """Thundergun: shove the zombie away from the local player."""
-        anchor = self.local_player.pos
-        dx = zombie.pos.x - anchor.x
-        dy = zombie.pos.y - anchor.y
-        length = (dx * dx + dy * dy) ** 0.5
-        if length < 0.1:
+    def _blast_knockback(self, zombie, shooter=None, bullet=None):
+        """Thundergun: fling the zombie away from the SHOOTER (not the
+        local player — wrong anchor in MP) with a decaying tumble impulse
+        instead of a single-frame teleport."""
+        direction = None
+        if shooter is not None:
+            direction = pygame.math.Vector2(
+                zombie.pos.x - shooter.pos.x, zombie.pos.y - shooter.pos.y)
+        if (direction is None or direction.length_squared() < 0.01) and bullet is not None:
+            direction = pygame.math.Vector2(bullet.vel)
+        if direction is None or direction.length_squared() < 0.01:
             return
-        push = 60.0
-        zombie.pos.x += dx / length * push
-        zombie.pos.y += dy / length * push
-        zombie.rect.center = zombie.pos
-        zombie.hit_box.center = zombie.pos
+        zombie.apply_knockback(direction, strength=20.0)
 
     def _player_by_id(self, player_id: int | None) -> Player | None:
         if player_id is None:

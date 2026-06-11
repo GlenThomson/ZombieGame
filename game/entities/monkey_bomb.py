@@ -115,10 +115,17 @@ class MonkeyBomb(pygame.sprite.Sprite):
         if self in self.scene.zombie_attractors:
             self.scene.zombie_attractors.remove(self)
         self.scene.announce_event("monkey_explode", {"sound": "kaboom.mp3"})
-        # Kill anything in radius.
+        # Kill anything in radius — kills pay out to the thrower.
+        from game.entities.grenade import award_explosive_kills
+        killed = 0
         for zombie in list(self.scene.zombies):
             d2 = (zombie.pos.x - self.pos.x) ** 2 + (zombie.pos.y - self.pos.y) ** 2
             if d2 <= MONKEY_BOMB_RADIUS_PX ** 2:
+                was_alive = zombie.health > 0
                 zombie.take_damage(MONKEY_BOMB_DAMAGE)
+                if was_alive and zombie.health <= 0:
+                    killed += 1
+        award_explosive_kills(self.scene, self.thrower_id, killed,
+                              (self.pos.x, self.pos.y))
         self.image = self.explosion_frames[0]
         self.rect = self.image.get_rect(center=self.pos)

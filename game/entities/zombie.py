@@ -68,6 +68,14 @@ class Zombie(pygame.sprite.Sprite):
         # Rise-from-the-ground spawn animation + per-zombie swipe cooldown.
         self.spawned_at_ms = pygame.time.get_ticks()
         self.last_attack_ms = 0
+        # Knockback impulse (Thundergun): decays over ~10 frames while the
+        # zombie tumbles, during which its AI is suspended.
+        self.knockback = vector(0, 0)
+
+    def apply_knockback(self, direction: vector, strength: float = 18.0):
+        if direction.length_squared() < 0.01:
+            return
+        self.knockback = direction.normalize() * strength
 
     @property
     def is_rising(self) -> bool:
@@ -102,6 +110,17 @@ class Zombie(pygame.sprite.Sprite):
             return
         if self.image.get_alpha() not in (None, 255):
             self.image.set_alpha(255)
+
+        # Tumbling from a Thundergun blast: ride the impulse (respecting
+        # walls), no AI until it peters out.
+        if self.knockback.length_squared() > 0.4:
+            self.pos += self.knockback
+            self.knockback *= 0.82
+            self.hit_box.center = self.pos
+            resolve_wall_collision(self, self.scene.walls, "x")
+            resolve_wall_collision(self, self.scene.walls, "y")
+            self.rect.center = self.hit_box.center
+            return
 
         # Stuck detection — if we haven't moved meaningfully in STUCK_CHECK_MS,
         # drop the path so the next path-retry kicks in immediately.

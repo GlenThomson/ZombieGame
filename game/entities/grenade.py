@@ -189,11 +189,32 @@ class Grenade(pygame.sprite.Sprite):
         # this is how you make an end-of-round crawler on purpose.
         cx, cy = self.rect.center
         half = radius / 2
+        killed = 0
         for zombie in list(self.scene.zombies):
             if not explosion_rect.colliderect(zombie.rect):
                 continue
             dist = ((zombie.pos.x - cx) ** 2 + (zombie.pos.y - cy) ** 2) ** 0.5
             falloff = max(0.15, 1.0 - dist / max(1.0, half * 1.4))
+            was_alive = zombie.health > 0
             zombie.take_damage(GRENADE_DAMAGE * falloff)
-            if zombie.alive() and zombie.health > 0:
+            if was_alive and zombie.health <= 0:
+                killed += 1
+            elif zombie.alive() and zombie.health > 0:
                 zombie.make_crawler()
+        award_explosive_kills(self.scene, getattr(self, "thrower_id", None),
+                              killed, self.rect.center)
+
+
+def award_explosive_kills(scene, thrower_id, killed: int, pos):
+    """Grenade / monkey-bomb kills pay out like bullet kills (BO1)."""
+    if not killed or thrower_id is None:
+        return
+    from settings import POINTS_PER_KILL
+    from game.entities.effects import FloatingText
+    thrower = next((p for p in scene.players if p.player_id == thrower_id), None)
+    if thrower is None:
+        return
+    pts = int(POINTS_PER_KILL * scene.points_multiplier) * killed
+    thrower.points += pts
+    thrower.kills += killed
+    FloatingText(scene, vector(pos[0], pos[1]), f"+{pts}", color=(255, 215, 0))

@@ -239,6 +239,10 @@ class ClientPlayState(State):
                 rotated = pygame.transform.rotate(base, b.get("angle", 0.0))
                 rect = rotated.get_rect(center=(wx + cam_x, wy + cam_y))
                 self.surface.blit(rotated, rect)
+            elif kind == "blast" and b.get("r", 0) > 0:
+                from game.entities.bullet import _blast_ring
+                ring = _blast_ring(int(b["r"]), min(1.0, float(b.get("fade", 0))))
+                self.surface.blit(ring, ring.get_rect(center=(wx + cam_x, wy + cam_y)))
             else:
                 size = 4 if pap else 3
                 if kind == "chain":

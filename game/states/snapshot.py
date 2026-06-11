@@ -37,6 +37,9 @@ def build_snapshot(scene) -> dict:
                 "kind": getattr(b, "effect_kind", "normal"),
                 "angle": float(b.angle_deg) if getattr(b, "effect_kind", "normal") == "laser" else 0.0,
                 "pap": bool(getattr(b, "is_packed", False)),
+                # Thundergun shockwave ring radius + fade fraction
+                "r": int(getattr(b, "blast_radius", 0)),
+                "fade": float(getattr(b, "blast_age", 0)) / 16.0,
             }
             for b in scene.bullets
         ],
