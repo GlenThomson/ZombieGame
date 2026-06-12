@@ -119,7 +119,11 @@ class HostServer:
     def start(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        sock.bind(("", self.port))
+        try:
+            sock.bind(("", self.port))
+        except OSError:
+            sock.bind(("", 0))
+            self.port = sock.getsockname()[1]
         sock.listen(self.max_clients)
         sock.settimeout(0.5)
         self._server_sock = sock
